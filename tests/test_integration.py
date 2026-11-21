@@ -312,7 +312,7 @@ async def test_demo_starts_at_current_brightness(hass: HomeAssistant) -> None:
     await teardown(hass, entry)
 
 
-async def test_demo_starts_at_daytime_level_when_light_is_off(
+async def test_demo_starts_at_dawn_ramp_when_light_is_off(
     hass: HomeAssistant,
 ) -> None:
     entry, calls = await setup(hass)
@@ -322,7 +322,7 @@ async def test_demo_starts_at_daytime_level_when_light_is_off(
         DOMAIN, "demo", {"entity_id": LIGHT, "date": "2026-06-21"}, blocking=True
     )
     await hass.async_block_till_done()
-    assert calls[0].data["brightness"] == 128  # 50 %: the daytime level
+    assert calls[0].data["brightness"] == 26  # 10 %: the dawn ramp starts low
     await hass.services.async_call(DOMAIN, "demo_stop", {}, blocking=True)
     await hass.async_block_till_done()
     assert off_calls and off_calls[-1].data["entity_id"] == LIGHT  # restored to off

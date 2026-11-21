@@ -1,3 +1,4 @@
+import dataclasses
 import sys
 import unittest
 from datetime import UTC, date, datetime, timedelta
@@ -205,3 +206,39 @@ class CycleTests(unittest.TestCase):
         self.assertAlmostEqual(targets[-1], 50.0, places=1)  # next noon: high
         low_at = targets.index(min(targets))
         self.assertTrue(0 < low_at < len(targets) - 1)
+
+
+class StartOffsetTests(unittest.TestCase):
+    def setUp(self):
+        self.d = CycleTests().make_cycle(15.0)
+        self.pct = lambda e: curve.target_pct(e, 10.0, -6.0, 50.0, 10.0)
+
+    def off(self, level):
+        return self.d.start_offset(self.pct, level, 50.0, 10.0)
+
+    def test_off_or_low_starts_the_dawn_ramp(self):
+        dawn_start = self.d.keys[3][0]
+        self.assertEqual(self.off(None), dawn_start)
+        self.assertEqual(self.off(10.0), dawn_start)
+
+    def test_high_starts_the_dusk_ramp_without_the_leading_hold(self):
+        self.assertEqual(self.off(50.0), self.d.keys[1][0])
+
+    def test_middle_level_starts_partway_down_the_dusk_ramp(self):
+        t = self.off(30.0)
+        self.assertTrue(self.d.keys[1][0] < t < self.d.keys[2][0])
+        self.assertAlmostEqual(self.pct(self.d.elevation_at(t)), 30.0, delta=1.0)
+
+    def test_one_shot_is_a_full_cycle_from_the_start_point(self):
+        d = dataclasses.replace(self.d, start_offset_s=self.d.keys[3][0])
+        self.assertIsNotNone(d.elevation(d.duration_s - 0.1))
+        self.assertIsNone(d.elevation(d.duration_s + 0.1))
+        # starts low (dawn ramp), passes through high, ends back at low
+        self.assertAlmostEqual(self.pct(d.elevation(0.0)), 10.0, delta=1.0)
+        self.assertAlmostEqual(
+            self.pct(d.elevation(d.duration_s - 0.1)), 10.0, delta=1.5
+        )
+        peak = max(
+            self.pct(d.elevation(t * 0.25)) for t in range(int(d.duration_s * 4))
+        )
+        self.assertAlmostEqual(peak, 50.0, delta=1.0)

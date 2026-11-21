@@ -125,11 +125,18 @@ class Demo:
 
     def progress(self, now: float) -> float | None:
         """Fraction of the virtual day elapsed, or None once a one-shot demo ends."""
-        p = (now - self.started_at + self.start_offset_s) / self.duration_s
-        if p >= 1.0 and not self.loop:
+        elapsed = max(0.0, now - self.started_at)
+        if elapsed >= self.duration_s and not self.loop:
             return None
-        p = p % 1.0 if self.loop else max(0.0, p)
-        return self._fraction_at(p * self.duration_s)
+        # A one-shot is one full cycle from wherever it starts, wrapping around.
+        real = (elapsed + self.start_offset_s) % self.duration_s
+        return self._fraction_at(real) if self.keys else real / self.duration_s
+
+    def _virtual_offset(self, real: float) -> float:
+        for (r0, v0), (r1, v1) in zip(self.keys, self.keys[1:], strict=False):
+            if real <= r1:
+                return v1 if r1 <= r0 else v0 + (v1 - v0) * (real - r0) / (r1 - r0)
+        return self.keys[-1][1]
 
     def _fraction_at(self, real: float) -> float:
         """Fraction of the virtual day shown `real` seconds into the cycle."""
@@ -142,28 +149,34 @@ class Demo:
         vt = self.virtual_start + timedelta(seconds=self._fraction_at(real) * DAY_S)
         return solar_elevation(self.lat, self.lon, vt)
 
-    def offset_for_level(
-        self, pct_at: Callable[[float], float], level: float, step: float = 0.05
+    def start_offset(
+        self,
+        pct_at: Callable[[float], float],
+        level: float | None,
+        high: float,
+        low: float,
+        step: float = 0.05,
     ) -> float:
-        """Real seconds into the cycle where the dusk ramp reaches `level` percent.
+        """Real seconds into the cycle to start at, so changes begin at once.
 
-        A light that is already dimmer than the daytime level starts part-way
-        down the dusk ramp; one at or below the low level starts on the low
-        plateau; one at or above the high level starts at the top (0).
+        `level` is the light's current brightness in percent, or None if it is
+        off. Off, or already at the low level: start the dawn ramp (it rises
+        from where it is). At the high level: start the dusk ramp. In between:
+        the point on the dusk ramp where the target equals `level`.
         """
-        limit = self.keys[3][0] if len(self.keys) > 3 else self.duration_s / 2
-        t = 0.0
-        while t < limit:
-            if pct_at(self.elevation_at(t)) <= level + 0.5:
+        if len(self.keys) < 4:
+            return 0.0
+        dusk_start, dawn_start = self.keys[1][0], self.keys[3][0]
+        if level is None or level <= low + 0.5:
+            return dawn_start
+        if level >= high - 0.5:
+            return dusk_start
+        t = dusk_start
+        while t < dawn_start:
+            if pct_at(self.elevation_at(t)) <= level:
                 return t
             t += step
-        return self.keys[2][0] if len(self.keys) > 2 else 0.0
-
-    def _virtual_offset(self, real: float) -> float:
-        for (r0, v0), (r1, v1) in zip(self.keys, self.keys[1:], strict=False):
-            if real <= r1:
-                return v1 if r1 <= r0 else v0 + (v1 - v0) * (real - r0) / (r1 - r0)
-        return self.keys[-1][1]
+        return dawn_start
 
     def virtual_time(self, now: float) -> datetime | None:
         p = self.progress(now)

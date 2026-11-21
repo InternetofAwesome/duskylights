@@ -346,15 +346,18 @@ class Controller:
         self.demo_light = light
         self.demo_engine = Engine(self._demo_target)
         state = self.hass.states.get(light)
-        # Start where the light is now; if it is off, start at the daytime level.
+        # Start where the light is now (off: the dawn ramp) and move at once.
         cur = state.attributes.get(ATTR_BRIGHTNESS) if state else None
-        if state and state.state == STATE_ON and cur:
-            self.demo = replace(
-                self.demo,
-                start_offset_s=self.demo.offset_for_level(
-                    lambda e: self._pct(light, e), cur * 100 / 255
-                ),
-            )
+        level = cur * 100 / 255 if state and state.state == STATE_ON and cur else None
+        self.demo = replace(
+            self.demo,
+            start_offset_s=self.demo.start_offset(
+                lambda e: self._pct(light, e),
+                level,
+                high=self._pct(light, 90.0),
+                low=self._pct(light, -90.0),
+            ),
+        )
         self._demo_restore = (
             light,
             bool(state and state.state == STATE_ON),

@@ -106,12 +106,16 @@ behaviour and is not something Dusky controls.
 ## Demo mode
 
 Plays one compressed cycle of the real sun for today's date (or any `date`) on
-exactly **one** light: the dusk ramp, the dawn ramp, and a short hold on each
-flat stretch between. With the default length it is the shortest cycle in which
-no step changes the brightness by more than about 1 %: about 15 s per ramp at
-the default settings, 30-35 s in all. Sharper curves take longer. It starts at the light's current brightness (part-way down the dusk
-ramp), or at the daytime level if the light is off, and the light is put back as
-it was when the demo ends.
+exactly **one** light: the dusk ramp, a hold at the low level, the dawn ramp, and
+a hold at the high level. It starts at the point nearest where the light is now
+and begins moving at once: part-way down the dusk ramp if the light is between
+the two levels, at the start of the dusk ramp if it is at the high level, and at
+the start of the dawn ramp if it is at the low level or off. A one-shot runs one
+full cycle from there, then puts the light back as it was.
+
+With the default length it is the shortest cycle in which no step changes the
+brightness by more than about 1 %: about 15 s per ramp at the default settings,
+30-35 s in all. Sharper curves take longer.
 
 From the UI (device "Dusky"): choose **Demo light**, **Demo repeat** (Once or
 Loop) and **Demo length** (seconds, 0 = automatic), then turn on **Demo**.
