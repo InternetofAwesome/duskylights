@@ -70,6 +70,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: DuskyConfigEntry) -> boo
     _prune_removed_lights(hass, entry)
     controller = Controller(hass, entry.options["lights"])
     entry.runtime_data = controller
+    # the hub device first, so each light's device can point at it
+    dr.async_get(hass).async_get_or_create(
+        config_entry_id=entry.entry_id,
+        identifiers={(DOMAIN, entry.entry_id)},
+        name="Dusky",
+        manufacturer="Dusky Lights",
+    )
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     controller.async_start()  # after platforms: restored settings are in place
     await async_register_panel(hass, MANIFEST_VERSION)

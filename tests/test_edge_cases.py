@@ -256,3 +256,11 @@ async def test_sun_path_covers_the_local_day_including_clock_change_days(
         assert len(res["elevations"]) == hours * 3600 // res["step_s"], day
         assert max(res["elevations"]) > 0 > min(res["elevations"])
     await teardown(hass, entry)
+
+
+async def test_each_light_device_hangs_off_the_hub_device(hass) -> None:
+    entry, _ = await setup(hass)
+    reg = dr.async_get(hass)
+    hub = reg.async_get_device({(DOMAIN, entry.entry_id)})
+    child = reg.async_get_device({(DOMAIN, f"{entry.entry_id}_{LIGHT}")})
+    assert hub and child and child.via_device_id == hub.id
