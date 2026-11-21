@@ -27,3 +27,10 @@ so far (`custom_components/duskylights/curve.py`, with tests).
 
     python3 -m unittest discover -s tests -v
     ruff check . && ruff format --check .
+
+## License
+
+[PolyForm Noncommercial 1.0.0](LICENSE). Free to use, modify and share for any
+non-commercial purpose; commercial use needs a separate license from the author.
+Keep the license and the `Required Notice` line in [NOTICE](NOTICE) with any copy.
+This is a source-available license, not an OSI open-source one.
