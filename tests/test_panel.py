@@ -54,7 +54,7 @@ async def test_panel_is_registered_admin_only_and_served(hass: HomeAssistant) ->
     with patch.object(panel.panel_custom, "async_register_panel", AsyncMock()) as reg:
         await panel.async_register_panel(hass, "9.9.9")
     kwargs = reg.await_args.kwargs
-    assert kwargs["frontend_url_path"] == "dusky"
+    assert kwargs["frontend_url_path"] == "dusky-lights"
     assert kwargs["webcomponent_name"] == "dusky-panel"
     assert kwargs["require_admin"] is True
     assert kwargs["module_url"].startswith(
@@ -83,7 +83,7 @@ async def test_registration_skips_arguments_this_home_assistant_lacks(
 
     with patch.object(panel.panel_custom, "async_register_panel", old_signature):
         await panel.async_register_panel(hass, "1")
-    assert old_signature.seen == ("dusky", True)
+    assert old_signature.seen == ("dusky-lights", True)
 
 
 async def test_demo_command_previews_unsaved_settings_only_for_the_demo(

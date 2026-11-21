@@ -38,7 +38,7 @@ from .const import (
 if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
 
-PANEL_URL = "dusky"
+PANEL_URL = "dusky-lights"
 STATIC_URL = f"/{DOMAIN}_static"
 JS = "dusky-panel.js"
 _STATIC_DONE = f"{DOMAIN}_static_done"
@@ -234,7 +234,7 @@ async def async_register_panel(hass: HomeAssistant, version: str) -> None:
     kwargs: dict[str, Any] = {
         "frontend_url_path": PANEL_URL,
         "webcomponent_name": "dusky-panel",
-        "sidebar_title": "Dusky",
+        "sidebar_title": "Dusky Lights",
         "sidebar_icon": "mdi:weather-sunset-down",
         # the content hash makes browsers fetch the file again whenever it changes
         "module_url": f"{STATIC_URL}/{JS}?v={version}-{await hass.async_add_executor_job(_digest)}",
