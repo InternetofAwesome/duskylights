@@ -8,16 +8,13 @@
 window.__errs = [];
 addEventListener("error", (e) => window.__errs.push(e.message));
 addEventListener("unhandledrejection", (e) => window.__errs.push(String(e.reason)));
-import { shape, daylightLux } from "../../custom_components/duskylights/frontend/dusky-panel.js";
+import { shape } from "../../custom_components/duskylights/frontend/dusky-panel.js";
 const q = new URLSearchParams(location.search);
 const frames = [];
 if (q.get("anim") || q.get("select")) window.requestAnimationFrame = (cb) => (frames.push(cb), frames.length);  // the test turns the crank itself
 let clock = 0;
 const pump = (ms) => { for (let t = 0; t < ms; t += 16) { clock += 16; const run = frames.splice(0); run.forEach((cb) => cb(clock)); } };
-if (q.get("mode") === "lux") {
-  const es = JSON.parse(q.get("cases"));
-  document.body.innerHTML = '<pre id="out">' + JSON.stringify(es.map((e) => daylightLux(e))) + "</pre>";
-} else if (q.get("mode") === "parity") {
+if (q.get("mode") === "parity") {
   const cases = JSON.parse(q.get("cases"));
   document.body.innerHTML = '<pre id="out">' + JSON.stringify(cases.map(([x, a, b]) => shape(x, a, b))) + "</pre>";
 } else {
@@ -240,9 +237,7 @@ if (q.get("mode") === "lux") {
       note: (sr.getElementById("demoNote") || {}).textContent,
       goDisabled: (sr.getElementById("dGo") || {}).disabled,
       rendered: !!sr.querySelector("svg path"),
-      twilight: [...sr.querySelectorAll("#graph g.twi")].map((g) => g.getAttribute("data-tip")),
-      day: (sr.querySelector("#graph path.daylight[fill=none]") || { getAttribute: () => "" }).getAttribute("d"),
-      lamp: (sr.querySelector("#graph path[stroke-width='4']") || { getAttribute: () => "" }).getAttribute("d"),
+      bands: [...sr.querySelectorAll("#graph g.band")].map((g) => ({ tip: g.getAttribute("data-tip"), label: (g.querySelector("text") || {}).textContent, shade: g.querySelector("rect").getAttribute("fill-opacity") })),
       endBox: el._rows ? el._rows.end_elevation.num.value : null,
     });
     document.body.appendChild(out);

@@ -181,34 +181,6 @@ def test_the_graph_glides_to_new_values_instead_of_jumping():
     )  # it lands and stops redrawing
 
 
-def test_daylight_reference_matches_haurwitz_above_and_decays_below_the_horizon():
-    elevs = [-12, -6, -0.5, 0, 0.5, 5, 10, 25, 32]
-    q = urllib.parse.urlencode({"mode": "lux", "cases": json.dumps(elevs)})
-    got = out(dom(f"{HARNESS}?{q}"))
-
-    def want(e):  # independent copy of the same model, in Python
-        tail = 400 * math.exp(0.795 * e)
-        if e < 0:
-            return tail
-        c = math.sin(math.radians(e))
-        sun = 110 * (1098 * c * math.exp(-0.059 / c) if c > 0 else 0)
-        k = min(1, e / 4)
-        k = k * k * (3 - 2 * k)
-        return (1 - k) * tail + k * sun
-
-    for g, e in zip(got, elevs, strict=True):
-        assert g == pytest.approx(want(e), rel=1e-9)
-    dense = list(range(-150, 400))
-    q = urllib.parse.urlencode(
-        {"mode": "lux", "cases": json.dumps([d / 10 for d in dense])}
-    )
-    curve_ = out(dom(f"{HARNESS}?{q}"))
-    assert curve_ == sorted(
-        curve_
-    )  # brighter as the sun climbs: no dip, no step down, in 0.1 degree steps
-    assert got[1] == pytest.approx(3.4, rel=0.1)  # about 3 lux when civil twilight ends
-
-
 def test_clicking_a_light_unlocks_only_its_brightness_and_locks_the_shared_settings():
     r = out(dom(f"{HARNESS}?perlight=1"))
     assert r["errors"] == []
@@ -243,20 +215,21 @@ def test_clicking_a_light_unlocks_only_its_brightness_and_locks_the_shared_setti
     assert r["back"]["title"] == "Settings" and r["back"]["start"]["disabled"] is False
 
 
-def test_daylight_curve_ends_match_the_lamp_range_and_twilight_dots_are_labelled():
+def test_the_sky_darkness_bands_are_labelled_ordered_and_carry_todays_times():
     r = probe()
     assert r["errors"] == []
-    first = lambda d: d.split("L")[0].split(",")[1]
-    last = lambda d: d.split("L")[-1].split(",")[1]
-    assert first(r["day"]) == first(r["lamp"])  # left end = the Day level
-    assert last(r["day"]) == last(r["lamp"])  # right end = the Night level
-    names = [tip.split(" (")[0] for tip in r["twilight"]]
+    names = [b["tip"].split(" (")[0].split(".")[0] for b in r["bands"]]
     assert names == [
-        "Sunset",
-        "Civil twilight ends",
-        "Nautical twilight ends",
-        "Astronomical twilight ends",
+        "Day",
+        "Civil twilight",
+        "Nautical twilight",
+        "Astronomical twilight",
+        "Night",
     ]
+    shades = [float(b["shade"]) for b in r["bands"]]
     assert (
-        "17:48" in r["twilight"][1]
-    )  # civil twilight ends at today's -6 degree crossing
+        shades == sorted(shades) and shades[0] == 0
+    )  # darker the further the sun is below the horizon
+    civil = r["bands"][1]["tip"]
+    assert "17:13" in civil and "17:48" in civil  # the 0 and -6 degree crossings
+    assert [b.get("label") for b in r["bands"]][:2] == ["day", "civil"]

@@ -57,21 +57,6 @@ export function targetPct(elevation, p) {
   return low + (p.high - low) * shape(progress(elevation, p.start, p.end), p.sharpStart, p.sharpEnd);
 }
 
-// ---- outdoor daylight, a rough reference curve ---------------------------------
-// Above the horizon: Haurwitz's clear-sky model (the standard one-liner, W/m2, times ~110 lm/W for
-// visible light). Below it: sky light fading exponentially (about 400 lux at sunset, ~3 lux at -6).
-// Only the shape matters here; the graph stretches it to fill the height.
-export function daylightLux(elevation) {
-  const tail = 400 * Math.exp(0.795 * elevation);
-  if (elevation < 0) return tail;
-  const c = Math.sin((elevation * Math.PI) / 180);
-  const sun = 110 * (c > 0 ? 1098 * c * Math.exp(-0.059 / c) : 0);
-  const t = Math.min(1, elevation / 4); // hand over from the sky-light tail to the sun over the first 4 degrees
-  const k = t * t * (3 - 2 * t);
-  return (1 - k) * tail + k * sun;
-}
-const DAY_FLOOR = 0.1; // lux at the bottom of the (logarithmic) reference curve
-
 // ---- helpers -----------------------------------------------------------------
 const esc = (s) =>
   String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -775,7 +760,7 @@ class DuskyPanel extends HTMLElement {
     const box = this.shadowRoot.getElementById("graph");
     const W = clamp(Math.round(box.clientWidth || 720), 300, 900);
     const H = Math.round(clamp(W * 0.58, 250, 460));
-    const L = 44, R = 14, T = 18, B = 58;
+    const L = 44, R = 14, T = 18, B = 74;
     const { xMax, xMin, yMax } = g;
     const ep = sel ? this._lp(sel) : g; // the curve being looked at
     const Gs = sel ? this._lp(sel, G) : G;
@@ -791,6 +776,28 @@ class DuskyPanel extends HTMLElement {
     };
 
     const o = [];
+    // how dark the sky is: day, three twilights, night (standard definitions by sun height)
+    for (const [top, bottom, short, name, shade, blurb] of [
+      [Infinity, 0, "day", "Day", 0, "The sun is above the horizon."],
+      [0, -6, "civil", "Civil twilight", 0.06, "Still bright enough to see outdoors without lights."],
+      [-6, -12, "nautical", "Nautical twilight", 0.12, "The horizon fades; most people want lights on."],
+      [-12, -18, "astro", "Astronomical twilight", 0.18, "Nearly dark; only faint sky glow remains."],
+      [-18, -Infinity, "night", "Night", 0.24, "Fully dark."],
+    ]) {
+      const hi = Math.min(top, xMax), lo = Math.max(bottom, xMin);
+      if (hi <= lo) continue;
+      const t0 = this._crossing(top === Infinity ? 0 : top, top === Infinity ? false : true);
+      const t1 = this._crossing(bottom === -Infinity ? -18 : bottom, true);
+      const when = top === Infinity
+        ? (t0 != null && t1 != null ? ` Today: ${this._clock(t0)} to ${this._clock(this._crossing(0, true))}.` : "")
+        : bottom === -Infinity
+          ? (t1 != null ? ` Today from about ${this._clock(t1)}.` : "")
+          : (this._crossing(top, true) != null && t1 != null ? ` Today: ${this._clock(this._crossing(top, true))} to ${this._clock(t1)}.` : "");
+      const range = top === Infinity ? "" : bottom === -Infinity ? " (sun more than 18\u00b0 below the horizon)" : ` (sun ${Math.abs(top)}\u00b0 to ${Math.abs(bottom)}\u00b0 below the horizon)`;
+      const x1 = X(hi), x2 = X(lo);
+      o.push(`<g class="band" data-tip="${esc(name + range + ". " + blurb + when)}"><rect x="${x1.toFixed(1)}" y="${T}" width="${(x2 - x1).toFixed(1)}" height="${H - B - T}" fill="var(--primary-text-color,#333)" fill-opacity="${shade}"/>` +
+        (x2 - x1 >= 40 ? `<text class="axis band-label" x="${((x1 + x2) / 2).toFixed(1)}" y="${H - B + 14}" text-anchor="middle">${short}</text>` : "") + "</g>");
+    }
     // ramp window shading
     o.push(`<rect x="${X(ep.start).toFixed(1)}" y="${T}" width="${Math.max(0, X(ep.end) - X(ep.start)).toFixed(1)}" height="${H - T - B}" fill="${AMBER}" opacity=".12"/>`);
     for (let p = 0; p <= G.yMax; p += G.yMax > 60 ? 20 : 10) {
@@ -799,36 +806,18 @@ class DuskyPanel extends HTMLElement {
     }
     const ticks = new Set([Math.round(G.xMax / 10) * 10, 10, 0, -6, -12, -18, Math.round(Gs.start), Math.round(Gs.end)].filter((e) => e <= xMax && e >= xMin));
     for (const e of ticks) {
-      o.push(`<line class="grid" x1="${X(e)}" x2="${X(e)}" y1="${T}" y2="${H - B}" stroke-dasharray="2 4"/><text class="axis" x="${X(e)}" y="${H - B + 18}" text-anchor="middle">${e}°</text>`);
+      o.push(`<line class="grid" x1="${X(e)}" x2="${X(e)}" y1="${T}" y2="${H - B}" stroke-dasharray="2 4"/><text class="axis" x="${X(e)}" y="${H - B + 33}" text-anchor="middle">${e}°</text>`);
     }
     // this evening's clock time for each elevation (skipped where labels would touch)
     let lastX = -1e9;
     for (const e of [...ticks].sort((p, q) => q - p)) {
       const t = this._crossing(e, true);
       if (t != null && Math.abs(X(e) - lastX) >= 46) {
-        o.push(`<text class="axis" x="${X(e)}" y="${H - B + 33}" text-anchor="middle">${esc(this._clock(t))}</text>`);
+        o.push(`<text class="axis" x="${X(e)}" y="${H - B + 48}" text-anchor="middle">${esc(this._clock(t))}</text>`);
         lastX = X(e);
       }
     }
     o.push(`<text class="axis" x="${(L + W - R) / 2}" y="${H - 6}" text-anchor="middle">sun elevation, with this evening\u2019s clock times</text>`);
-
-    // outdoor daylight: a faint reference whose top is this light's Day level and bottom its Night level
-    // (log, perceptual scale), so the two curves differ only in timing
-    let dayY;
-    {
-      const top = Math.log10(daylightLux(xMax) / DAY_FLOOR);
-      const f = (e) => clamp(Math.log10(Math.max(daylightLux(e), DAY_FLOOR) / DAY_FLOOR) / top, 0, 1);
-      const lo = Math.min(ep.low, ep.high), hi = Math.max(ep.low, ep.high);
-      dayY = (e) => Y(lo + (hi - lo) * f(e));
-      const pts = [];
-      for (let i = 0; i <= 160; i++) {
-        const e = xMax - ((xMax - xMin) * i) / 160;
-        pts.push(`${i ? "L" : "M"}${X(e).toFixed(1)},${dayY(e).toFixed(1)}`);
-      }
-      const line = pts.join("");
-      o.push(`<path class="daylight" d="${line}L${X(xMin).toFixed(1)},${Y(0)}L${X(xMax).toFixed(1)},${Y(0)}Z" fill="var(--secondary-text-color,#888)" opacity=".10"/>`);
-      o.push(`<path class="daylight" d="${line}" fill="none" stroke="var(--secondary-text-color,#888)" stroke-width="1.5" opacity=".45"/>`);
-    }
 
     // per-light curves: the picked light alone and bold, else every light that differs
     info.lights.forEach((l, i) => {
@@ -841,19 +830,6 @@ class DuskyPanel extends HTMLElement {
     });
     o.push(`<path d="${path(g)}" fill="none" stroke="${AMBER}" stroke-width="${sel ? 2 : 4}" stroke-linecap="round" ${sel ? 'stroke-dasharray="5 4" opacity=".7"' : ""}/>`);
     o.push(`<circle cx="${X(ep.start)}" cy="${Y(ep.high)}" r="5" fill="${AMBER}"/><circle cx="${X(ep.end)}" cy="${Y(Math.min(ep.low, ep.high))}" r="5" fill="#d9567a"/>`);
-
-    // where sunset and each twilight ends, as dots on the daylight curve
-    let prevLabelX = -1e9, prevRaised = false;
-    for (const [e, name, short] of [[0, "Sunset", "sunset"], [-6, "Civil twilight ends", "civil"], [-12, "Nautical twilight ends", "nautical"], [-18, "Astronomical twilight ends", "astro"]]) {
-      if (e > xMax || e < xMin) continue;
-      const t = this._crossing(e, true);
-      const tip = `${name} (sun ${e === 0 ? "at the horizon" : Math.abs(e) + "\u00b0 below it"}).${t != null ? " Today: about " + this._clock(t) + "." : ""}`;
-      const cx = X(e).toFixed(1), cy = dayY(e).toFixed(1);
-      const raise = Math.abs(+cx - prevLabelX) < 84 && !prevRaised; // keep neighbouring labels apart
-      o.push(`<g class="twi" data-tip="${esc(tip)}"><circle cx="${cx}" cy="${cy}" r="11" fill="transparent"/><circle cx="${cx}" cy="${cy}" r="4" fill="var(--card-background-color,#fff)" stroke="var(--secondary-text-color,#888)" stroke-width="2"/><text class="axis" x="${+cx + (+cx > W - R - 60 ? -8 : 8)}" y="${+cy - (raise ? 22 : 8)}" text-anchor="${+cx > W - R - 60 ? "end" : "start"}">${short}</text></g>`);
-      prevLabelX = +cx;
-      prevRaised = raise;
-    }
 
     // live sun and each light's target
     const demoLight = info.lights.find((l) => {
@@ -892,7 +868,7 @@ class DuskyPanel extends HTMLElement {
         ? `<span><b>${esc(sel.name)}</b>: Day ${fmt(this._lightParams(sel, G).high, 0)}%, Night ${fmt(this._lightParams(sel, G).low, 0)}% (dashed = global)</span>`
         : `<span class="sub">Click a light's name below to see just its curve.</span>`) +
       `<span data-tip="The schedule every light follows, unless it has its own settings."><span class="dot" style="background:${AMBER}"></span>global curve</span>` +
-      `<span data-tip="A rough estimate of clear-sky daylight outside: the Haurwitz model above the horizon, fading out through twilight. It is fitted to the lamp's range (its top is the Day level, its bottom the Night level), so it shows timing, not real amounts. The dots mark sunset and where each twilight ends."><span class="dot" style="background:var(--secondary-text-color,#888);opacity:.5"></span>daylight (rough)</span>` +
+      `<span data-tip="The shading shows how dark the sky is: day, then civil, nautical and astronomical twilight, then night. These are the standard astronomical definitions from the sun's height, not measurements. Hover a band for today's times."><span class="dot" style="background:var(--secondary-text-color,#888);opacity:.5"></span>sky darkness</span>` +
       info.lights
         .map((l, i) => `<span data-tip="${esc(l.name)}: drawn dashed where it differs from the global curve. Click its name in the table to edit just this light."><span class="dot" style="background:${SERIES[i % SERIES.length]}"></span>${esc(l.name)}</span>`)
         .join("");
