@@ -32,11 +32,12 @@ so far (`custom_components/duskylights/curve.py`, with tests).
 
 `duskylights.demo` (service) runs a virtual 24 hours of the *real sun for the
 chosen date* (default today, so it matches the time of year) over any real
-duration, e.g. 10 minutes. Options: `duration` (real minutes for the full day),
-`date`, `start_hour` (default 12: dusk, night, then dawn), `loop`, and an
-optional list of lights. While it runs, the controller ticks every fraction of a
-second so steps stay small, then it returns to the live sun. Stop it with
-`duskylights.demo_stop`.
+duration, e.g. 10 minutes. It drives exactly **one** light: `entity_id` is
+required and must be a single light, and no other light is touched. Options:
+`duration` (real minutes for the full day), `date`, `start_hour` (default 12:
+dusk, night, then dawn) and `loop`. While it runs, that light's controller ticks
+every fraction of a second so steps stay small, then it returns to the live sun.
+Stop it early with `duskylights.demo_stop`.
 
 ## License
 
