@@ -139,7 +139,14 @@ def test_lights_are_added_and_removed_from_the_panel_and_locked_while_editing():
     ]
     assert r["locked"] is True
     assert r["addState"] == [True, False]  # Add is off until a light is picked
-    assert "light.office" in r["opts"]
+    f = r["found"]
+    assert len(f["all"]) == 3
+    assert f["bySubstring"] == [
+        "Office lightslight.office"
+    ]  # "FFI" finds it mid-word, any case
+    assert f["byEntity"] == ["Porchlight.porch"]
+    assert f["noMatch"] == ["No matching lights"]
+    assert f["value"] == "Office lights"  # arrow-down + Enter picked the second match
 
 
 def test_picking_a_light_shows_its_own_curve_and_editing_it_moves_the_chart():

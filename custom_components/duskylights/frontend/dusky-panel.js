@@ -112,7 +112,21 @@ tr.sel { background:color-mix(in srgb, var(--primary-color,#03a9f4) 12%, transpa
   color:var(--primary-text-color,#333); border:1px solid var(--divider-color,#ddd);
   background:color-mix(in srgb, var(--primary-text-color,#333) 5%, var(--card-background-color,#fff)); box-shadow:0 2px 10px rgba(0,0,0,.15); }
 .addrow { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:12px; }
-.addrow select { max-width:100%; min-width:220px; flex:1 1 220px; }
+.addrow { align-items:flex-end; }
+.combo { position:relative; flex:1 1 260px; min-width:220px; }
+.combo label { display:block; font-size:12px; color:var(--secondary-text-color,#666); margin:0 0 2px 12px; }
+.combo input { width:100%; box-sizing:border-box; height:48px; padding:0 12px; font:inherit; color:var(--primary-text-color,#333);
+  background:var(--input-fill-color, color-mix(in srgb, var(--primary-text-color,#333) 6%, transparent));
+  border:0; border-bottom:1px solid var(--input-idle-line-color, var(--secondary-text-color,#888)); border-radius:4px 4px 0 0; outline:none; }
+.combo input:hover { background:color-mix(in srgb, var(--primary-text-color,#333) 9%, transparent); }
+.combo input:focus { border-bottom:2px solid var(--primary-color,#03a9f4); padding-bottom:1px; }
+.combo input:disabled { opacity:.5; }
+.combo ul { position:absolute; left:0; right:0; top:100%; z-index:6; margin:2px 0 0; padding:8px 0; list-style:none; max-height:264px; overflow:auto;
+  background:var(--card-background-color,#fff); border-radius:4px; box-shadow:0 5px 16px rgba(0,0,0,.25); }
+.combo li { padding:8px 16px; cursor:pointer; display:flex; flex-direction:column; min-height:36px; justify-content:center; }
+.combo li small { color:var(--secondary-text-color,#666); font-size:12px; }
+.combo li.act, .combo li:hover { background:color-mix(in srgb, var(--primary-text-color,#333) 8%, transparent); }
+.combo li.none { color:var(--secondary-text-color,#666); cursor:default; }
 button { font:inherit; cursor:pointer; padding:7px 14px; border-radius:8px; border:1px solid var(--primary-color,#03a9f4);
   background:transparent; color:var(--primary-color,#03a9f4); }
 button.fill { background:var(--primary-color,#03a9f4); color:var(--text-primary-color,#fff); }
@@ -328,7 +342,7 @@ class DuskyPanel extends HTMLElement {
         </div>
         <section class="card"><h2>Lights</h2><div style="overflow-x:auto"><table id="lights"></table></div>
           <p style="margin:12px 0 0"><button id="releaseAll" data-tip="Cancel every manual dim so all lights follow the sun again">Resume all</button></p>
-          <div class="addrow"><select id="addSel"></select><button id="addBtn" data-tip="Have Dusky manage the selected light">Add light</button>
+          <div class="addrow"><div class="combo"><label for="addIn">Add a light</label><input id="addIn" type="text" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="addList" placeholder="Search by name or entity id"><ul id="addList" role="listbox"></ul></div><button id="addBtn" data-tip="Have Dusky manage the selected light">Add light</button>
             <span class="sub" id="addNote"></span></div></section>
         <section class="card"><h2>Demo</h2><div class="demo-grid" id="demo"></div><p class="sub" id="demoNote"></p></section>
       </main><div id="tip" role="tooltip"></div>`;
@@ -414,12 +428,62 @@ class DuskyPanel extends HTMLElement {
       table.querySelector("tbody").appendChild(tr);
       return { l, tr, hi, lo };
     });
-    const sel = root.getElementById("addSel");
-    sel.innerHTML = `<option value="">Choose a light to add…</option>` +
-      (info.candidates || []).map((c) => `<option value="${esc(c.light)}">${esc(c.name)} (${esc(c.light)})</option>`).join("");
-    sel.addEventListener("change", () => this._update());
+    // type-to-filter light picker (substring of the name or entity id)
+    this._addPick = null;
+    const inp = root.getElementById("addIn"), list = root.getElementById("addList");
+    const cands = info.candidates || [];
+    let shown = [], active = 0;
+    const render = () => {
+      const q = inp.value.trim().toLowerCase();
+      shown = this._addPick ? cands : cands.filter((c) => !q || c.name.toLowerCase().includes(q) || c.light.toLowerCase().includes(q));
+      list.innerHTML = shown.length
+        ? shown.map((c, n) => `<li role="option" data-i="${n}" class="${n === active ? "act" : ""}"><span>${esc(c.name)}</span><small>${esc(c.light)}</small></li>`).join("")
+        : '<li class="none">No matching lights</li>';
+      const a = list.querySelector(".act");
+      if (a) a.scrollIntoView({ block: "nearest" });
+    };
+    const open = () => {
+      if (inp.disabled) return;
+      render();
+      list.style.display = "block";
+      inp.setAttribute("aria-expanded", "true");
+    };
+    const close = () => {
+      list.style.display = "none";
+      inp.setAttribute("aria-expanded", "false");
+    };
+    const pick = (c) => {
+      this._addPick = c.light;
+      inp.value = c.name;
+      close();
+      this._update();
+    };
+    inp.addEventListener("focus", () => { inp.select(); open(); });
+    inp.addEventListener("input", () => {
+      this._addPick = null; // typing again means the earlier pick no longer counts
+      active = 0;
+      open();
+      this._update();
+    });
+    inp.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        if (list.style.display !== "block") open();
+        active = shown.length ? (active + (e.key === "ArrowDown" ? 1 : -1) + shown.length) % shown.length : 0;
+        render();
+      } else if (e.key === "Enter") {
+        if (list.style.display === "block" && shown[active]) { e.preventDefault(); pick(shown[active]); }
+      } else if (e.key === "Escape") close();
+    });
+    inp.addEventListener("blur", close);
+    list.addEventListener("mousedown", (e) => {
+      e.preventDefault(); // keep focus in the box so blur does not close the list first
+      const li = e.target.closest("li[data-i]");
+      if (li) pick(shown[+li.dataset.i]);
+    });
+    close();
     root.getElementById("addBtn").addEventListener("click", () => {
-      if (sel.value) this._setLights([...info.lights.map((x) => x.light), sel.value]);
+      if (this._addPick) this._setLights([...info.lights.map((x) => x.light), this._addPick]);
     });
     this._markSel();
     this._lastW = 0;
@@ -507,10 +571,10 @@ class DuskyPanel extends HTMLElement {
     const dirty = this._dirtyIds().length;
     {
       const root = this.shadowRoot, many = this._info.lights.length > 1;
-      const sel = root.getElementById("addSel"), btn = root.getElementById("addBtn");
+      const inp = root.getElementById("addIn"), btn = root.getElementById("addBtn");
       const none = !(this._info.candidates || []).length;
-      sel.disabled = dirty > 0 || none;
-      btn.disabled = sel.disabled || !sel.value;
+      inp.disabled = dirty > 0 || none;
+      btn.disabled = inp.disabled || !this._addPick;
       root.getElementById("addNote").textContent = dirty > 0 ? "Save or discard your changes first." : none ? "No other lights to add." : "";
       for (const r of this._lightRows) r.tr.querySelector(".rm").disabled = dirty > 0 || !many;
     }

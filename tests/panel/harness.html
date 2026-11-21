@@ -48,7 +48,7 @@ if (q.get("mode") === "parity") {
       { light: "light.living", name: "Living lights", high: "number.dusky_living_high", low: "number.dusky_living_low", release: "button.dusky_living_release", target: "sensor.dusky_living_target" },
       { light: "light.kitchen", name: "Kitchen lights", high: "number.dusky_kitchen_high", low: "number.dusky_kitchen_low", release: "button.dusky_kitchen_release", target: "sensor.dusky_kitchen_target" },
     ],
-    candidates: [{ light: "light.office", name: "Office lights" }],
+    candidates: [{ light: "light.garage", name: "Garage lights" }, { light: "light.office", name: "Office lights" }, { light: "light.porch", name: "Porch" }],
     release_all: "button.dusky_release_all", elevation: "sensor.dusky_sun_elevation",
     demo: { switch: "switch.dusky_demo", light: "select.dusky_demo_light", repeat: "select.dusky_demo_repeat", length: "number.dusky_demo_length" },
   };
@@ -132,13 +132,28 @@ if (q.get("mode") === "parity") {
     out.textContent = JSON.stringify({ errors: window.__errs, early, shown, text, w, after: getComputedStyle(tip).display, native: [...sr.querySelectorAll("[title]")].length });
     document.body.appendChild(out);
   }
+  if (q.get("combo")) {
+    await new Promise((r) => setTimeout(r, 200));
+    const inp = el.shadowRoot.getElementById("addIn");
+    inp.focus(); inp.value = "li"; inp.dispatchEvent(new Event("input"));
+    inp.scrollIntoView({ block: "center" });
+  }
   if (q.get("manage")) {
     await new Promise((r) => setTimeout(r, 200));
     const sr = el.shadowRoot;
     window.confirm = () => true;
     const addDisabledBefore = sr.getElementById("addBtn").disabled;      // nothing picked yet
-    sr.getElementById("addSel").value = "light.office";
-    sr.getElementById("addSel").dispatchEvent(new Event("change"));
+    const inp = sr.getElementById("addIn"), names = () => [...sr.querySelectorAll("#addList li")].map((li) => li.textContent);
+    const type = (v) => { inp.value = v; inp.dispatchEvent(new Event("input")); };
+    inp.dispatchEvent(new Event("focus"));
+    const all = names();
+    type("FFI"); const bySubstring = names();             // middle of a name, any case
+    type("light.por"); const byEntity = names();           // entity id works too
+    type("zzz"); const noMatch = names();
+    type("lights");
+    inp.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+    inp.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));   // second match = Office lights
+    window.found = { all, bySubstring, byEntity, noMatch, value: inp.value };
     window.addState = [addDisabledBefore, sr.getElementById("addBtn").disabled];
     sr.getElementById("addBtn").click();
     await new Promise((r) => setTimeout(r, 100));
@@ -148,7 +163,7 @@ if (q.get("mode") === "parity") {
     el._rows.normal_pct.num.value = "60"; el._rows.normal_pct.num.dispatchEvent(new Event("change"));
     const locked = sr.getElementById("addBtn").disabled && sr.querySelector("#lights .rm").disabled;
     const out = document.createElement("pre"); out.id = "out";
-    out.textContent = JSON.stringify({ errors: window.__errs, calls: window.calls, locked, addState: window.addState, opts: [...sr.querySelectorAll("#addSel option")].map((o) => o.value) });
+    out.textContent = JSON.stringify({ errors: window.__errs, calls: window.calls, locked, addState: window.addState, found: window.found });
     document.body.appendChild(out);
   }
   if (q.get("probe") || q.get("garbage")) {
