@@ -119,11 +119,27 @@ if (q.get("mode") === "parity") {
     out.textContent = JSON.stringify({ errors: window.__errs, before, picked, edited, legend, legend2, back: snap(), sel: el._sel });
     document.body.appendChild(out);
   }
+  if (q.get("tip")) {
+    await new Promise((r) => setTimeout(r, 200));
+    const sr = el.shadowRoot, tip = sr.getElementById("tip");
+    const inp = sr.querySelector("#lights tbody tr .hi");
+    inp.dispatchEvent(new MouseEvent("mouseover", { bubbles: true, composed: true }));
+    const early = getComputedStyle(tip).display;                    // not yet: the delay keeps it out of the way
+    await new Promise((r) => setTimeout(r, 800));
+    const shown = getComputedStyle(tip).display, text = tip.textContent, w = tip.getBoundingClientRect().width;
+    if (!q.get("keep")) inp.dispatchEvent(new MouseEvent("mouseout", { bubbles: true, composed: true }));
+    const out = document.createElement("pre"); out.id = "out";
+    out.textContent = JSON.stringify({ errors: window.__errs, early, shown, text, w, after: getComputedStyle(tip).display, native: [...sr.querySelectorAll("[title]")].length });
+    document.body.appendChild(out);
+  }
   if (q.get("manage")) {
     await new Promise((r) => setTimeout(r, 200));
     const sr = el.shadowRoot;
     window.confirm = () => true;
+    const addDisabledBefore = sr.getElementById("addBtn").disabled;      // nothing picked yet
     sr.getElementById("addSel").value = "light.office";
+    sr.getElementById("addSel").dispatchEvent(new Event("change"));
+    window.addState = [addDisabledBefore, sr.getElementById("addBtn").disabled];
     sr.getElementById("addBtn").click();
     await new Promise((r) => setTimeout(r, 100));
     sr.querySelector("#lights tbody tr .rm").click();
@@ -132,7 +148,7 @@ if (q.get("mode") === "parity") {
     el._rows.normal_pct.num.value = "60"; el._rows.normal_pct.num.dispatchEvent(new Event("change"));
     const locked = sr.getElementById("addBtn").disabled && sr.querySelector("#lights .rm").disabled;
     const out = document.createElement("pre"); out.id = "out";
-    out.textContent = JSON.stringify({ errors: window.__errs, calls: window.calls, locked, opts: [...sr.querySelectorAll("#addSel option")].map((o) => o.value) });
+    out.textContent = JSON.stringify({ errors: window.__errs, calls: window.calls, locked, addState: window.addState, opts: [...sr.querySelectorAll("#addSel option")].map((o) => o.value) });
     document.body.appendChild(out);
   }
   if (q.get("probe") || q.get("garbage")) {

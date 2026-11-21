@@ -108,6 +108,9 @@ input[type=range] { width:100%; accent-color:var(--primary-color,#03a9f4); }
 input[type=number], select { width:100%; padding:6px 8px; font:inherit; color:inherit; background:transparent;
   border:1px solid var(--divider-color,#ccc); border-radius:6px; }
 tr.sel { background:color-mix(in srgb, var(--primary-color,#03a9f4) 12%, transparent); }
+#tip { position:fixed; display:none; z-index:10; max-width:45ch; padding:8px 11px; border-radius:8px; font-size:13px; line-height:1.4; pointer-events:none;
+  color:var(--primary-text-color,#333); border:1px solid var(--divider-color,#ddd);
+  background:color-mix(in srgb, var(--primary-text-color,#333) 5%, var(--card-background-color,#fff)); box-shadow:0 2px 10px rgba(0,0,0,.15); }
 .addrow { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:12px; }
 .addrow select { max-width:100%; min-width:220px; flex:1 1 220px; }
 button { font:inherit; cursor:pointer; padding:7px 14px; border-radius:8px; border:1px solid var(--primary-color,#03a9f4);
@@ -141,6 +144,32 @@ class DuskyPanel extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
+    this._tipTimer = null;
+    const hide = () => {
+      clearTimeout(this._tipTimer);
+      const tip = this.shadowRoot.getElementById("tip");
+      if (tip) tip.style.display = "none";
+    };
+    const show = (el) => {
+      const tip = this.shadowRoot.getElementById("tip");
+      if (!tip || !el.isConnected) return;
+      tip.textContent = el.getAttribute("data-tip");
+      tip.style.display = "block";
+      const r = el.getBoundingClientRect(), t = tip.getBoundingClientRect();
+      tip.style.left = Math.max(8, Math.min(innerWidth - t.width - 8, r.left + r.width / 2 - t.width / 2)) + "px";
+      tip.style.top = (r.bottom + t.height + 12 < innerHeight ? r.bottom + 8 : Math.max(8, r.top - t.height - 8)) + "px";
+    };
+    const find = (e) => (e.target.closest ? e.target.closest("[data-tip]") : null);
+    this.shadowRoot.addEventListener("mouseover", (e) => {
+      const el = find(e);
+      hide();
+      if (el) this._tipTimer = setTimeout(() => show(el), 600); // short delay so it never gets in the way
+    });
+    this.shadowRoot.addEventListener("mouseout", hide);
+    this.shadowRoot.addEventListener("mousedown", hide);
+    this.shadowRoot.addEventListener("focusin", (e) => { const el = find(e); if (el) show(el); });
+    this.shadowRoot.addEventListener("focusout", hide);
+    addEventListener("scroll", hide, true);
     this._hass = null;
     this._info = null;
     this._loading = false;
@@ -291,18 +320,18 @@ class DuskyPanel extends HTMLElement {
     root.innerHTML = `<style>${STYLE}</style>
       <header><span id="menu"></span><h1>Dusky Lights</h1>
         <div class="actions"><span class="dirty" id="dirty"></span>
-          <button id="discard" title="Throw away unsaved changes">Discard</button><button id="save" class="fill" title="Apply your changes to the lights">Save</button></div></header>
+          <button id="discard" data-tip="Throw away unsaved changes">Discard</button><button id="save" class="fill" data-tip="Apply your changes to the lights">Save</button></div></header>
       <main>
         <div class="two">
           <section class="card"><h2>Brightness follows the sun</h2><div id="graph"></div><div class="legend" id="legend"></div><p class="sub" id="times"></p></section>
           <section class="card"><h2>Settings</h2><div id="settings"></div></section>
         </div>
         <section class="card"><h2>Lights</h2><div style="overflow-x:auto"><table id="lights"></table></div>
-          <p style="margin:12px 0 0"><button id="releaseAll" title="Cancel every manual dim so all lights follow the sun again">Resume all</button></p>
-          <div class="addrow"><select id="addSel"></select><button id="addBtn" title="Have Dusky manage the selected light">Add light</button>
+          <p style="margin:12px 0 0"><button id="releaseAll" data-tip="Cancel every manual dim so all lights follow the sun again">Resume all</button></p>
+          <div class="addrow"><select id="addSel"></select><button id="addBtn" data-tip="Have Dusky manage the selected light">Add light</button>
             <span class="sub" id="addNote"></span></div></section>
         <section class="card"><h2>Demo</h2><div class="demo-grid" id="demo"></div><p class="sub" id="demoNote"></p></section>
-      </main>`;
+      </main><div id="tip" role="tooltip"></div>`;
 
     root.getElementById("save").addEventListener("click", () => this._save());
     root.getElementById("discard").addEventListener("click", () => this._discard());
@@ -325,7 +354,7 @@ class DuskyPanel extends HTMLElement {
       const a = (st && st.attributes) || {};
       const row = document.createElement("div");
       row.className = "row";
-      row.title = tip;
+      row.setAttribute("data-tip", `${tip} This is the default for every light; a light can set its own in the table below.`);
       row.innerHTML = `<label>${esc(label)}</label>
         <input type="range" min="${a.min ?? 0}" max="${a.max ?? 100}" step="${a.step ?? 1}">
         <input type="number" min="${a.min ?? 0}" max="${a.max ?? 100}" step="${a.step ?? 1}">
@@ -346,21 +375,21 @@ class DuskyPanel extends HTMLElement {
 
     // lights table
     const table = root.getElementById("lights");
-    table.innerHTML = `<thead><tr><th>Light</th><th title="What the light is at right now">Now</th>
-      <th title="What Dusky wants it to be right now, following the sun">Should be</th>
-      <th title="Day brightness for this light. Empty uses the global setting.">Day</th>
-      <th title="Night brightness for this light. Empty uses the global setting.">Night</th>
-      <th title="Auto follows the sun. Manual means you dimmed it by hand.">Mode</th><th></th></tr></thead><tbody></tbody>`;
+    table.innerHTML = `<thead><tr><th>Light</th><th data-tip="What the light is at right now">Now</th>
+      <th data-tip="What Dusky wants it to be right now, following the sun">Should be</th>
+      <th data-tip="Day brightness for this light. Empty uses the global setting.">Day</th>
+      <th data-tip="Night brightness for this light. Empty uses the global setting.">Night</th>
+      <th data-tip="Auto follows the sun. Manual means you dimmed it by hand.">Mode</th><th></th></tr></thead><tbody></tbody>`;
     this._lightRows = info.lights.map((l, i) => {
       const tr = document.createElement("tr");
       tr.innerHTML = `<td><span class="dot" style="background:${SERIES[i % SERIES.length]}"></span><span class="name"></span></td>
         <td data-l="Now" class="now"></td><td data-l="Should be" class="target"></td>
         <td data-l="Day"><input type="number" class="hi" min="0" max="100" step="1"></td>
         <td data-l="Night"><input type="number" class="lo" min="0" max="100" step="1"></td>
-        <td data-l="Mode" class="state"></td><td><button class="rel" title="You dimmed this light by hand. Click to let it follow the sun again.">Resume auto</button> <button class="rm" title="Stop Dusky managing this light. The light itself is not changed.">Remove</button></td>`;
+        <td data-l="Mode" class="state"></td><td><button class="rel" data-tip="You dimmed this light by hand. Click to let it follow the sun again.">Resume auto</button> <button class="rm" data-tip="Stop Dusky managing this light. The light itself is not changed.">Remove</button></td>`;
       tr.querySelector(".name").textContent = l.name;
       tr.querySelector("td").style.cursor = "pointer";
-      tr.querySelector("td").title = "Click to see this light's own curve on the graph";
+      tr.querySelector("td").setAttribute("data-tip", "Click to see this light's own curve on the graph.");
       tr.querySelector("td").addEventListener("click", () => {
         this._sel = this._sel === l.light ? null : l.light;
         this._drawGraph();
@@ -388,6 +417,7 @@ class DuskyPanel extends HTMLElement {
     const sel = root.getElementById("addSel");
     sel.innerHTML = `<option value="">Choose a light to add…</option>` +
       (info.candidates || []).map((c) => `<option value="${esc(c.light)}">${esc(c.name)} (${esc(c.light)})</option>`).join("");
+    sel.addEventListener("change", () => this._update());
     root.getElementById("addBtn").addEventListener("click", () => {
       if (sel.value) this._setLights([...info.lights.map((x) => x.light), sel.value]);
     });
@@ -407,9 +437,9 @@ class DuskyPanel extends HTMLElement {
     // demo controls: local choices; runs on what is on screen, saved or not
     const demo = root.getElementById("demo");
     if (!info.lights.some((l) => l.light === this._d.light)) this._d.light = info.lights[0] && info.lights[0].light;
-    demo.innerHTML = `<div><label>Light</label><select id="dLight" title="The light to run the demo on"></select></div>
-      <div><label>Repeat</label><select id="dRepeat" title="Once plays one day and night. Loop keeps going until you stop it."><option>Once</option><option>Loop</option></select></div>
-      <div><label>Seconds (0 = auto)</label><input id="dLen" title="How long the demo takes. 0 picks a length that looks smooth." type="number" min="0" max="600" step="1" value="0"></div>
+    demo.innerHTML = `<div><label>Light</label><select id="dLight" data-tip="The light to run the demo on"></select></div>
+      <div><label>Repeat</label><select id="dRepeat" data-tip="Once plays one day and night. Loop keeps going until you stop it."><option>Once</option><option>Loop</option></select></div>
+      <div><label>Seconds (0 = auto)</label><input id="dLen" data-tip="How long the demo takes. 0 picks a length that looks smooth." type="number" min="0" max="600" step="1" value="0"></div>
       <div><button id="dGo" class="fill"></button></div>`;
     this._demo = {
       light: demo.querySelector("#dLight"),
@@ -479,7 +509,8 @@ class DuskyPanel extends HTMLElement {
       const root = this.shadowRoot, many = this._info.lights.length > 1;
       const sel = root.getElementById("addSel"), btn = root.getElementById("addBtn");
       const none = !(this._info.candidates || []).length;
-      sel.disabled = btn.disabled = dirty > 0 || none;
+      sel.disabled = dirty > 0 || none;
+      btn.disabled = sel.disabled || !sel.value;
       root.getElementById("addNote").textContent = dirty > 0 ? "Save or discard your changes first." : none ? "No other lights to add." : "";
       for (const r of this._lightRows) r.tr.querySelector(".rm").disabled = dirty > 0 || !many;
     }
@@ -513,13 +544,14 @@ class DuskyPanel extends HTMLElement {
       r.tr.querySelector(".state").innerHTML = demo
         ? '<span class="badge demo">demo</span>'
         : holding
-          ? `<span class="badge hold" title="You dimmed it by hand. It stays there until the sun's curve catches down to it.">manual ${fmt(((t.attributes.hold_brightness || 0) * 100) / 255, 0)}%</span>`
-          : '<span class="badge" title="Following the sun">auto</span>';
+          ? `<span class="badge hold" data-tip="You dimmed it by hand. It stays there until the sun's curve catches down to it.">manual ${fmt(((t.attributes.hold_brightness || 0) * 100) / 255, 0)}%</span>`
+          : '<span class="badge" data-tip="Following the sun">auto</span>';
       const set = (inp, id, glob) => {
         if (this.shadowRoot.activeElement === inp) return;
         const v = this._num(id, 0);
         inp.value = v ? v : "";
         inp.placeholder = fmt(glob, 0) + " (default)";
+        inp.setAttribute("data-tip", `Leave empty to use the default (${fmt(glob, 0)}%) from Settings. Type a number to give just this light its own ${inp.classList.contains("hi") ? "day" : "night"} brightness.`);
       };
       set(hi, l.high, g.high);
       set(lo, l.low, g.low);
@@ -533,7 +565,7 @@ class DuskyPanel extends HTMLElement {
     if (active !== this._demo.len) this._demo.len.value = this._d.len;
     for (const k of ["light", "repeat", "len"]) this._demo[k].disabled = running;
     const lname = ((this._info.lights.find((l) => l.light === this._d.light) || {}).name) || "the light";
-    this._demo.go.title = "Plays a quick dusk and dawn on this one light, then puts it back as it was";
+    this._demo.go.setAttribute("data-tip", "Plays a quick dusk and dawn on this one light, then puts it back as it was.");
     this._demo.go.textContent = running ? "Stop demo" : dirty ? "Try changes" : "Start demo";
     const sw = this._state(this._info.demo.switch);
     this._demo.go.disabled = !this._info.lights.length || !sw || sw.state === "unavailable";

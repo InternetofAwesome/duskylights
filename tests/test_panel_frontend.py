@@ -138,6 +138,7 @@ def test_lights_are_added_and_removed_from_the_panel_and_locked_while_editing():
         ["light.kitchen"],
     ]
     assert r["locked"] is True
+    assert r["addState"] == [True, False]  # Add is off until a light is picked
     assert "light.office" in r["opts"]
 
 
@@ -149,3 +150,12 @@ def test_picking_a_light_shows_its_own_curve_and_editing_it_moves_the_chart():
     assert "Living lights" in r["legend"] and "High 50%" in r["legend"]
     assert "High 90%" in r["legend2"]
     assert r["back"] != r["edited"] and r["sel"] is None  # second click = all lights
+
+
+def test_tooltips_are_our_own_delayed_and_explain_the_default():
+    r = out(dom(f"{HARNESS}?tip=1"))
+    assert r["errors"] == []
+    assert r["early"] == "none" and r["shown"] == "block" and r["after"] == "none"
+    assert "default (50%)" in r["text"]
+    assert r["w"] < 420  # wraps rather than running across the page
+    assert r["native"] == 0  # no browser-styled title tooltips left
