@@ -8,6 +8,7 @@ entity does not break it.
 
 from __future__ import annotations
 
+import hashlib
 import inspect
 from datetime import UTC, datetime, time, timedelta
 from pathlib import Path
@@ -213,6 +214,12 @@ def async_setup_websocket(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_sun_path)
 
 
+def _digest() -> str:
+    return hashlib.sha1(
+        (Path(__file__).parent / "frontend" / JS).read_bytes()
+    ).hexdigest()[:10]
+
+
 async def async_register_panel(hass: HomeAssistant, version: str) -> None:
     """Serve the panel's JavaScript and add the admin-only sidebar entry."""
     if not hass.data.get(_STATIC_DONE):
@@ -229,7 +236,8 @@ async def async_register_panel(hass: HomeAssistant, version: str) -> None:
         "webcomponent_name": "dusky-panel",
         "sidebar_title": "Dusky",
         "sidebar_icon": "mdi:weather-sunset-down",
-        "module_url": f"{STATIC_URL}/{JS}?v={version}",
+        # the content hash makes browsers fetch the file again whenever it changes
+        "module_url": f"{STATIC_URL}/{JS}?v={version}-{await hass.async_add_executor_job(_digest)}",
         "require_admin": True,
     }
     params = inspect.signature(panel_custom.async_register_panel).parameters

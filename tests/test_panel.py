@@ -57,7 +57,9 @@ async def test_panel_is_registered_admin_only_and_served(hass: HomeAssistant) ->
     assert kwargs["frontend_url_path"] == "dusky"
     assert kwargs["webcomponent_name"] == "dusky-panel"
     assert kwargs["require_admin"] is True
-    assert kwargs["module_url"] == "/duskylights_static/dusky-panel.js?v=9.9.9"
+    assert kwargs["module_url"].startswith(
+        "/duskylights_static/dusky-panel.js?v=9.9.9-"
+    )
     (static,) = hass.http.async_register_static_paths.await_args.args[0]
     assert static.url_path == "/duskylights_static"
     assert (panel.Path(static.path) / "dusky-panel.js").is_file()
