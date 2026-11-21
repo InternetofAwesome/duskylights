@@ -75,6 +75,10 @@ class CurveTests(unittest.TestCase):
         self.assertAlmostEqual(far, 5.0 - 2.0)  # capped at 2 segments
         self.assertEqual(curve.interpolate_elevation((0, 6.0), (120, 5.0), 100), 5.0)
         self.assertEqual(curve.interpolate_elevation((0, 6.0), (4000, 5.0), 4100), 5.0)
+        # two readings a moment apart give no usable slope
+        self.assertEqual(
+            curve.interpolate_elevation((100.0, 30.0), (100.01, 2.0), 105), 2.0
+        )
         self.assertFalse(math.isnan(far))
 
 

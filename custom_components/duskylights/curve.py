@@ -16,6 +16,8 @@ a = b = 1 is exactly a straight line; a = b = 0 is smoothstep.
 from __future__ import annotations
 
 MAX_SHARPNESS = 3.0
+MIN_SEGMENT_S = 30.0  # readings closer than this give a meaningless slope
+MAX_SEGMENT_S = 1800.0  # readings further apart than this are stale
 
 
 def progress(elevation: float, start: float, end: float) -> float:
@@ -61,13 +63,14 @@ def interpolate_elevation(
     Each reading is (timestamp_seconds, elevation_degrees). The sun's angle is
     near-linear over a few minutes, so extrapolating the last segment removes
     the staircase from the sun entity's 2-4 minute update cadence. With only
-    one reading, or a stale/odd pair, it returns the last value unchanged.
+    one reading, or a pair too close together or too far apart to give a
+    trustworthy slope, it returns the last value unchanged.
     """
     t1, e1 = last
     if prev is None:
         return e1
     t0, e0 = prev
-    if t1 <= t0 or now < t1 or (t1 - t0) > 1800:
+    if (t1 - t0) < MIN_SEGMENT_S or (t1 - t0) > MAX_SEGMENT_S or now < t1:
         return e1
     rate = (e1 - e0) / (t1 - t0)
     return e1 + rate * min(now - t1, 2 * (t1 - t0))  # never extrapolate far

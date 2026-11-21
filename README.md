@@ -4,8 +4,20 @@ A Home Assistant integration that keeps your lights at a normal level during the
 day and eases them down as the sun sets, following solar *elevation* (not clock
 time), then back up at dawn.
 
-**Status: early development, not yet installable.** Only the curve maths exists
-so far (`custom_components/duskylights/curve.py`, with tests).
+**Status: early development.** The full integration is written and passes its
+tests in Home Assistant's own test harness (config flow, entities, curve, holds,
+release, overrides, demo), but it has **not yet been run against real lights**.
+Treat it as pre-release.
+
+## Entities
+
+- Numbers (global): ramp-start elevation, minimum-reached elevation, normal
+  brightness, minimum brightness, sharpness at each end.
+- Numbers (per light): normal / minimum brightness override. **0 = use the
+  global value.**
+- Buttons: release one light, or all, back onto the curve.
+- Sensors: each light's target brightness (with `holding`, `hold_brightness` and
+  `demo` attributes) and the interpolated sun elevation in use.
 
 ## Design
 
@@ -25,7 +37,8 @@ so far (`custom_components/duskylights/curve.py`, with tests).
 
 ## Development
 
-    python3 -m unittest discover -s tests -v
+    python3 -m venv .venv && .venv/bin/pip install pytest-homeassistant-custom-component
+    .venv/bin/python -m pytest -q
     ruff check . && ruff format --check .
 
 ## Demo mode
