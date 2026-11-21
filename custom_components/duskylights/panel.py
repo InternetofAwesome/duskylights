@@ -24,6 +24,7 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
 
 from .const import (
+    CONF_LIGHTS,
     DOMAIN,
     K_END,
     K_FLOOR,
@@ -67,9 +68,20 @@ def build_info(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]:
                 "target": _entity(reg, "sensor", f"{eid}_{light}_target"),
             }
         )
+    used = set(entry.runtime_data.lights)
+    candidates = []
+    for st in hass.states.async_all("light"):
+        ent = reg.async_get(st.entity_id)
+        if st.entity_id in used or (
+            ent and (ent.disabled_by or ent.hidden_by or ent.platform == DOMAIN)
+        ):
+            continue
+        candidates.append({"light": st.entity_id, "name": st.name})
+    candidates.sort(key=lambda c: c["name"].lower())
     return {
         "settings": settings,
         "lights": lights,
+        "candidates": candidates,
         "release_all": _entity(reg, "button", f"{eid}_release_all"),
         "elevation": _entity(reg, "sensor", f"{eid}_elevation"),
         "demo": {
@@ -168,8 +180,33 @@ def ws_demo_stop(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
     connection.send_result(msg["id"])
 
 
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/set_lights",
+        vol.Required("lights"): vol.All(
+            [cv.entity_domain("light")], vol.Length(min=1), vol.Unique()
+        ),
+    }
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_set_lights(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    """Replace the managed lights (what the options form does) and reload."""
+    entries = hass.config_entries.async_loaded_entries(DOMAIN)
+    if not entries:
+        connection.send_error(msg["id"], "not_loaded", "Dusky Lights is not set up")
+        return
+    entry = entries[0]
+    hass.config_entries.async_update_entry(
+        entry, options={**entry.options, CONF_LIGHTS: msg["lights"]}
+    )
+    await hass.config_entries.async_reload(entry.entry_id)
+    connection.send_result(msg["id"])
+
+
 @callback
 def async_setup_websocket(hass: HomeAssistant) -> None:
+    websocket_api.async_register_command(hass, ws_set_lights)
     websocket_api.async_register_command(hass, ws_info)
     websocket_api.async_register_command(hass, ws_demo)
     websocket_api.async_register_command(hass, ws_demo_stop)

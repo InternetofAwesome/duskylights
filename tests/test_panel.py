@@ -5,6 +5,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 from homeassistant.setup import async_setup_component
 
 from custom_components.duskylights import panel
@@ -79,7 +80,7 @@ async def test_registration_skips_arguments_this_home_assistant_lacks(
         old_signature.seen = (frontend_url_path, require_admin)
 
     with patch.object(panel.panel_custom, "async_register_panel", old_signature):
-        await panel.async_register_panel(hass, "1") 
+        await panel.async_register_panel(hass, "1")
     assert old_signature.seen == ("dusky", True)
 
 
@@ -106,3 +107,34 @@ async def test_demo_command_previews_unsaved_settings_only_for_the_demo(
     assert (await client.receive_json())["success"]
     assert c._demo_values is None
     await teardown(hass, entry)
+
+
+async def test_set_lights_command_changes_the_lights_and_reloads(
+    hass: HomeAssistant, hass_ws_client
+) -> None:
+    entry, _ = await setup(hass)
+    hass.states.async_set("light.other", "on", {"brightness": 100})
+    client = await hass_ws_client(hass)
+    await client.send_json_auto_id({"type": "duskylights/info"})
+    info = (await client.receive_json())["result"]
+    assert "light.other" in [c["light"] for c in info["candidates"]]
+    assert LIGHT not in [c["light"] for c in info["candidates"]]
+
+    await client.send_json_auto_id(
+        {"type": "duskylights/set_lights", "lights": [LIGHT, "light.other"]}
+    )
+    assert (await client.receive_json())["success"]
+    await hass.async_block_till_done()
+    assert entry.options["lights"] == [LIGHT, "light.other"]
+    assert entry.runtime_data.lights == [LIGHT, "light.other"]
+    reg = er.async_get(hass)
+    assert reg.async_get_entity_id(
+        "button", DOMAIN, f"{entry.entry_id}_release_light.other"
+    )
+
+    await client.send_json_auto_id({"type": "duskylights/set_lights", "lights": []})
+    assert not (await client.receive_json())["success"]  # never an empty list
+    await client.send_json_auto_id(
+        {"type": "duskylights/set_lights", "lights": ["switch.nope"]}
+    )
+    assert not (await client.receive_json())["success"]

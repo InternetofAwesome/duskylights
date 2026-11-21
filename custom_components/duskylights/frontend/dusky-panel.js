@@ -101,6 +101,9 @@ svg { width:100%; height:auto; display:block; }
 input[type=range] { width:100%; accent-color:var(--primary-color,#03a9f4); }
 input[type=number], select { width:100%; padding:6px 8px; font:inherit; color:inherit; background:transparent;
   border:1px solid var(--divider-color,#ccc); border-radius:6px; }
+tr.sel { background:color-mix(in srgb, var(--primary-color,#03a9f4) 12%, transparent); }
+.addrow { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:12px; }
+.addrow select { max-width:100%; }
 button { font:inherit; cursor:pointer; padding:7px 14px; border-radius:8px; border:1px solid var(--primary-color,#03a9f4);
   background:transparent; color:var(--primary-color,#03a9f4); }
 button.fill { background:var(--primary-color,#03a9f4); color:var(--text-primary-color,#fff); }
@@ -265,6 +268,16 @@ class DuskyPanel extends HTMLElement {
     this._update();
   }
 
+  async _setLights(lights) {
+    this._draft = {};
+    try {
+      await this._hass.callWS({ type: "duskylights/set_lights", lights });
+    } catch (e) {
+      this._saveError = e && e.message ? e.message : String(e);
+    }
+    await this._load();
+  }
+
   // ---- build (once) -----------------------------------------------------------
   _build() {
     const info = this._info;
@@ -279,8 +292,9 @@ class DuskyPanel extends HTMLElement {
           <section class="card"><h2>Settings</h2><div id="settings"></div></section>
         </div>
         <section class="card"><h2>Lights</h2><div style="overflow-x:auto"><table id="lights"></table></div>
-          <p style="margin:12px 0 0"><button id="releaseAll">Release all to the curve</button>
-          <a class="sub" style="margin-left:16px" href="/config/integrations/integration/duskylights">Add or remove lights</a></p></section>
+          <p style="margin:12px 0 0"><button id="releaseAll">Release all to the curve</button></p>
+          <div class="addrow"><select id="addSel"></select><button id="addBtn">Add light</button>
+            <span class="sub" id="addNote"></span></div></section>
         <section class="card"><h2>Demo</h2><div class="demo-grid" id="demo"></div><p class="sub" id="demoNote"></p></section>
       </main>`;
 
@@ -333,8 +347,15 @@ class DuskyPanel extends HTMLElement {
         <td data-l="Now" class="now"></td><td data-l="Target" class="target"></td>
         <td data-l="High"><input type="number" class="hi" min="0" max="100" step="1"></td>
         <td data-l="Low"><input type="number" class="lo" min="0" max="100" step="1"></td>
-        <td data-l="State" class="state"></td><td><button class="rel">Release</button></td>`;
+        <td data-l="State" class="state"></td><td><button class="rel">Release</button> <button class="rm" title="Stop managing this light">Remove</button></td>`;
       tr.querySelector(".name").textContent = l.name;
+      tr.querySelector("td").style.cursor = "pointer";
+      tr.querySelector("td").title = "Show this light's curve on the graph";
+      tr.querySelector("td").addEventListener("click", () => {
+        this._sel = this._sel === l.light ? null : l.light;
+        this._drawGraph();
+        this._markSel();
+      });
       const wire = (cls, id) => {
         const inp = tr.querySelector(cls);
         inp.addEventListener("change", () => {
@@ -346,22 +367,36 @@ class DuskyPanel extends HTMLElement {
       const hi = wire(".hi", l.high);
       const lo = wire(".lo", l.low);
       tr.querySelector(".rel").addEventListener("click", () => this._call("button", "press", { entity_id: l.release }));
+      tr.querySelector(".rm").addEventListener("click", () => {
+        if (info.lights.length < 2) return;
+        if (confirm(`Stop managing ${l.name}? The light stays as it is; its Dusky settings are removed.`))
+          this._setLights(info.lights.map((x) => x.light).filter((x) => x !== l.light));
+      });
       table.querySelector("tbody").appendChild(tr);
       return { l, tr, hi, lo };
     });
+    const sel = root.getElementById("addSel");
+    sel.innerHTML = `<option value="">Add a light…</option>` +
+      (info.candidates || []).map((c) => `<option value="${esc(c.light)}">${esc(c.name)} (${esc(c.light)})</option>`).join("");
+    root.getElementById("addBtn").addEventListener("click", () => {
+      if (sel.value) this._setLights([...info.lights.map((x) => x.light), sel.value]);
+    });
+    this._markSel();
     this._lastW = 0;
-    new ResizeObserver(() => {
+    if (this._ro) this._ro.disconnect();
+    this._ro = new ResizeObserver(() => {
       const w = root.getElementById("graph").clientWidth;
       if (w && w !== this._lastW) {
         this._lastW = w;
         this._drawGraph();
       }
-    }).observe(root.getElementById("graph"));
+    });
+    this._ro.observe(root.getElementById("graph"));
     root.getElementById("releaseAll").addEventListener("click", () => this._call("button", "press", { entity_id: info.release_all }));
 
     // demo controls: local choices; runs on what is on screen, saved or not
     const demo = root.getElementById("demo");
-    this._d.light = this._d.light || (info.lights[0] && info.lights[0].light);
+    if (!info.lights.some((l) => l.light === this._d.light)) this._d.light = info.lights[0] && info.lights[0].light;
     demo.innerHTML = `<div><label>Light</label><select id="dLight"></select></div>
       <div><label>Repeat</label><select id="dRepeat"><option>Once</option><option>Loop</option></select></div>
       <div><label>Length (s, 0 = automatic)</label><input id="dLen" type="number" min="0" max="600" step="1" value="0"></div>
@@ -430,6 +465,14 @@ class DuskyPanel extends HTMLElement {
       if (Number.isFinite(v) && Math.abs(v - this._draft[id]) < 1e-9) delete this._draft[id];
     }
     const dirty = this._dirtyIds().length;
+    {
+      const root = this.shadowRoot, many = this._info.lights.length > 1;
+      const sel = root.getElementById("addSel"), btn = root.getElementById("addBtn");
+      const none = !(this._info.candidates || []).length;
+      sel.disabled = btn.disabled = dirty > 0 || none;
+      root.getElementById("addNote").textContent = dirty > 0 ? "Save or discard your changes first." : none ? "No other lights to add." : "";
+      for (const r of this._lightRows) r.tr.querySelector(".rm").disabled = dirty > 0 || !many;
+    }
     const root = this.shadowRoot;
     root.getElementById("dirty").textContent = this._saveError
       ? "Save failed: " + this._saveError
@@ -495,8 +538,14 @@ class DuskyPanel extends HTMLElement {
   }
 
   // ---- graph -----------------------------------------------------------------
+  _markSel() {
+    for (const r of this._lightRows || []) r.tr.classList.toggle("sel", r.l.light === this._sel);
+  }
+
   _drawGraph() {
     const info = this._info;
+    if (this._sel && !info.lights.some((l) => l.light === this._sel)) this._sel = null;
+    const sel = info.lights.find((l) => l.light === this._sel);
     const g = this._params();
     const box = this.shadowRoot.getElementById("graph");
     const W = clamp(Math.round(box.clientWidth || 720), 300, 900);
@@ -538,15 +587,17 @@ class DuskyPanel extends HTMLElement {
     }
     o.push(`<text class="axis" x="${(L + W - R) / 2}" y="${H - 6}" text-anchor="middle">sun elevation, with this evening\u2019s clock times</text>`);
 
-    // per-light curves where they differ from the global one
+    // per-light curves: the picked light alone and bold, else every light that differs
     info.lights.forEach((l, i) => {
       const lp = this._lightParams(l, g);
-      if (lp.high !== g.high || lp.low !== g.low) {
-        o.push(`<path d="${path(lp)}" fill="none" stroke="${SERIES[i % SERIES.length]}" stroke-width="2" stroke-dasharray="6 4" opacity=".9"/>`);
+      const mine = sel && l === sel;
+      if (mine || (!sel && (lp.high !== g.high || lp.low !== g.low))) {
+        o.push(`<path d="${path(lp)}" fill="none" stroke="${SERIES[i % SERIES.length]}" stroke-width="${mine ? 4 : 2}" ${mine ? 'stroke-linecap="round"' : 'stroke-dasharray="6 4"'} opacity=".95"/>`);
       }
     });
-    o.push(`<path d="${path(g)}" fill="none" stroke="${AMBER}" stroke-width="4" stroke-linecap="round"/>`);
-    o.push(`<circle cx="${X(g.start)}" cy="${Y(g.high)}" r="5" fill="${AMBER}"/><circle cx="${X(g.end)}" cy="${Y(Math.min(g.low, g.high))}" r="5" fill="#d9567a"/>`);
+    o.push(`<path d="${path(g)}" fill="none" stroke="${AMBER}" stroke-width="${sel ? 2 : 4}" stroke-linecap="round" ${sel ? 'stroke-dasharray="5 4" opacity=".7"' : ""}/>`);
+    const ep = sel ? this._lightParams(sel, g) : g;
+    o.push(`<circle cx="${X(g.start)}" cy="${Y(ep.high)}" r="5" fill="${AMBER}"/><circle cx="${X(g.end)}" cy="${Y(Math.min(ep.low, ep.high))}" r="5" fill="#d9567a"/>`);
 
     // live sun and each light's target
     const demoLight = info.lights.find((l) => {
@@ -560,6 +611,7 @@ class DuskyPanel extends HTMLElement {
       o.push(`<text class="axis" x="${ex}" y="${T + 12}" text-anchor="${ex > W - 90 ? "end" : "start"}" dx="${ex > W - 90 ? -4 : 4}">${demoLight ? "demo sun" : "sun"} ${fmt(elev, 1)}°</text>`);
       info.lights.forEach((l, i) => {
         if (demoLight && l !== demoLight) return; // only the demo light is moving
+        if (!demoLight && sel && l !== sel) return;
         const t = this._state(l.target);
         const v = t ? parseFloat(t.state) : NaN;
         if (Number.isFinite(v)) {
@@ -580,6 +632,9 @@ class DuskyPanel extends HTMLElement {
       `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Brightness against sun elevation">${o.join("")}</svg>`;
 
     this.shadowRoot.getElementById("legend").innerHTML =
+      (sel
+        ? `<span><b>${esc(sel.name)}</b>: High ${fmt(this._lightParams(sel, g).high, 0)}%, Low ${fmt(this._lightParams(sel, g).low, 0)}% (dashed = global)</span>`
+        : `<span class="sub">Click a light's name below to see its own curve.</span>`) +
       `<span><span class="dot" style="background:${AMBER}"></span>global curve</span>` +
       info.lights
         .map((l, i) => `<span><span class="dot" style="background:${SERIES[i % SERIES.length]}"></span>${esc(l.name)}</span>`)

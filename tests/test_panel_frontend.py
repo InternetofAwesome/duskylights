@@ -127,3 +127,25 @@ def test_garbage_typed_into_the_fields_is_clamped_or_ignored():
     assert "number.dusky_start_elevation" not in sets  # empty ignored
     assert not any(math.isnan(v) for v in sets.values())  # no NaN written
     assert r["endBox"] != "abc"
+
+
+def test_lights_are_added_and_removed_from_the_panel_and_locked_while_editing():
+    r = out(dom(f"{HARNESS}?manage=1"))
+    assert r["errors"] == []
+    sets = [c[2]["lights"] for c in r["calls"] if c[1] == "duskylights/set_lights"]
+    assert sets == [
+        ["light.living", "light.kitchen", "light.office"],
+        ["light.kitchen"],
+    ]
+    assert r["locked"] is True
+    assert "light.office" in r["opts"]
+
+
+def test_picking_a_light_shows_its_own_curve_and_editing_it_moves_the_chart():
+    r = out(dom(f"{HARNESS}?select=1"))
+    assert r["errors"] == []
+    assert r["picked"] != r["before"]  # now showing that light's curve
+    assert r["edited"] != r["picked"]  # typing a new High redraws it live
+    assert "Living lights" in r["legend"] and "High 50%" in r["legend"]
+    assert "High 90%" in r["legend2"]
+    assert r["back"] != r["edited"] and r["sel"] is None  # second click = all lights

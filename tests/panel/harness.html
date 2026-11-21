@@ -48,6 +48,7 @@ if (q.get("mode") === "parity") {
       { light: "light.living", name: "Living lights", high: "number.dusky_living_high", low: "number.dusky_living_low", release: "button.dusky_living_release", target: "sensor.dusky_living_target" },
       { light: "light.kitchen", name: "Kitchen lights", high: "number.dusky_kitchen_high", low: "number.dusky_kitchen_low", release: "button.dusky_kitchen_release", target: "sensor.dusky_kitchen_target" },
     ],
+    candidates: [{ light: "light.office", name: "Office lights" }],
     release_all: "button.dusky_release_all", elevation: "sensor.dusky_sun_elevation",
     demo: { switch: "switch.dusky_demo", light: "select.dusky_demo_light", repeat: "select.dusky_demo_repeat", length: "number.dusky_demo_length" },
   };
@@ -102,6 +103,36 @@ if (q.get("mode") === "parity") {
     sr.getElementById("releaseAll").click();
     await new Promise((r) => setTimeout(r, 100));
     const out = document.createElement("pre"); out.id = "out"; out.textContent = JSON.stringify({ calls: window.calls, beforeSave: window.beforeSave, errors: window.__errs });
+    document.body.appendChild(out);
+  }
+  if (q.get("select")) {
+    await new Promise((r) => setTimeout(r, 200));
+    const sr = el.shadowRoot, snap = () => [...sr.querySelectorAll("#graph svg path")].map((p) => p.getAttribute("d"));
+    const before = snap();
+    sr.querySelectorAll("#lights tbody tr td")[0].click();            // pick the first light
+    const picked = snap(), legend = sr.getElementById("legend").textContent;
+    const hi = sr.querySelector("#lights tbody tr .hi");
+    hi.value = "90"; hi.dispatchEvent(new Event("change"));           // edit its High: the chart must move
+    const edited = snap(), legend2 = sr.getElementById("legend").textContent;
+    sr.querySelectorAll("#lights tbody tr td")[0].click();            // click again: back to all lights
+    const out = document.createElement("pre"); out.id = "out";
+    out.textContent = JSON.stringify({ errors: window.__errs, before, picked, edited, legend, legend2, back: snap(), sel: el._sel });
+    document.body.appendChild(out);
+  }
+  if (q.get("manage")) {
+    await new Promise((r) => setTimeout(r, 200));
+    const sr = el.shadowRoot;
+    window.confirm = () => true;
+    sr.getElementById("addSel").value = "light.office";
+    sr.getElementById("addBtn").click();
+    await new Promise((r) => setTimeout(r, 100));
+    sr.querySelector("#lights tbody tr .rm").click();
+    await new Promise((r) => setTimeout(r, 100));
+    // with unsaved edits the add/remove controls lock
+    el._rows.normal_pct.num.value = "60"; el._rows.normal_pct.num.dispatchEvent(new Event("change"));
+    const locked = sr.getElementById("addBtn").disabled && sr.querySelector("#lights .rm").disabled;
+    const out = document.createElement("pre"); out.id = "out";
+    out.textContent = JSON.stringify({ errors: window.__errs, calls: window.calls, locked, opts: [...sr.querySelectorAll("#addSel option")].map((o) => o.value) });
     document.body.appendChild(out);
   }
   if (q.get("probe") || q.get("garbage")) {
