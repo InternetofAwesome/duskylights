@@ -292,7 +292,7 @@ class DuskyPanel extends HTMLElement {
           <section class="card"><h2>Settings</h2><div id="settings"></div></section>
         </div>
         <section class="card"><h2>Lights</h2><div style="overflow-x:auto"><table id="lights"></table></div>
-          <p style="margin:12px 0 0"><button id="releaseAll">Release all to the curve</button></p>
+          <p style="margin:12px 0 0"><button id="releaseAll" title="Cancel every manual dim and let all lights follow the sun again">Resume auto for all lights</button></p>
           <div class="addrow"><select id="addSel"></select><button id="addBtn">Add light</button>
             <span class="sub" id="addNote"></span></div></section>
         <section class="card"><h2>Demo</h2><div class="demo-grid" id="demo"></div><p class="sub" id="demoNote"></p></section>
@@ -347,7 +347,7 @@ class DuskyPanel extends HTMLElement {
         <td data-l="Now" class="now"></td><td data-l="Target" class="target"></td>
         <td data-l="High"><input type="number" class="hi" min="0" max="100" step="1"></td>
         <td data-l="Low"><input type="number" class="lo" min="0" max="100" step="1"></td>
-        <td data-l="State" class="state"></td><td><button class="rel">Release</button> <button class="rm" title="Stop managing this light">Remove</button></td>`;
+        <td data-l="State" class="state"></td><td><button class="rel" title="Cancel the manual dim and let this light follow the sun again">Resume auto</button> <button class="rm" title="Stop managing this light">Remove</button></td>`;
       tr.querySelector(".name").textContent = l.name;
       tr.querySelector("td").style.cursor = "pointer";
       tr.querySelector("td").title = "Show this light's curve on the graph";
@@ -503,8 +503,8 @@ class DuskyPanel extends HTMLElement {
       r.tr.querySelector(".state").innerHTML = demo
         ? '<span class="badge demo">demo</span>'
         : holding
-          ? `<span class="badge hold">holding ${fmt(((t.attributes.hold_brightness || 0) * 100) / 255, 0)}%</span>`
-          : '<span class="badge">on curve</span>';
+          ? `<span class="badge hold">manual ${fmt(((t.attributes.hold_brightness || 0) * 100) / 255, 0)}%</span>`
+          : '<span class="badge">auto</span>';
       const set = (inp, id, glob) => {
         if (this.shadowRoot.activeElement === inp) return;
         const v = this._num(id, 0);

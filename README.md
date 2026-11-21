@@ -49,7 +49,7 @@ settings, redrawn as you drag the sliders, with the sun's current elevation and
 each light's current target marked on it. Under the elevations are the clock times
 at which today's sun passes them, so you can see when dimming will start and end. Below the graph are the global
 settings, a table of lights (per-light high and low overrides, whether a light
-is holding a manual level, a Release button for each) and the demo controls.
+is holding a manual level, a Resume auto button for each) and the demo controls.
 
 It reads and writes the integration's own entities, so everything on the panel
 also works from dashboards and automations.
@@ -83,7 +83,7 @@ live on the "Dusky" device: `number.dusky_high`, `number.dusky_low`,
 - Numbers (global): start/end elevation, high (normal) and low (minimum)
   brightness, sharpness at each end.
 - Numbers (per light): high / low override. **0 = use the global value.**
-- Buttons: release one light, or all, back onto the curve.
+- Buttons: resume auto for one light, or all (cancels a manual dim, so the light follows the sun again).
 - Sensors: each light's target brightness (with `holding`, `hold_brightness` and
   `demo` attributes) and the interpolated sun elevation in use.
 
@@ -99,7 +99,7 @@ live on the "Dusky" device: `number.dusky_high`, `number.dusky_low`,
 - Global defaults, with optional per-room overrides (0 = use the global value).
 - Manual changes: dimming by hand holds that level until the sun's target falls
   below it; raising by hand holds until the light is turned off and on, or dawn.
-  Release buttons put a room (or all rooms) back on the curve.
+  The Resume auto buttons (entities named release) cancel a manual dim for a room, or all rooms.
 - The sun entity updates only every few minutes, so elevation is interpolated
   between readings and changes are applied in ~1 % steps.
 - No firmware or add-on dependencies: it only uses standard `light` entities and
