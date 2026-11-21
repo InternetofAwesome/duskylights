@@ -81,3 +81,28 @@ async def test_registration_skips_arguments_this_home_assistant_lacks(
     with patch.object(panel.panel_custom, "async_register_panel", old_signature):
         await panel.async_register_panel(hass, "1")  # must not pass config_panel_domain
     assert old_signature.seen == ("dusky", True)
+
+
+async def test_demo_command_previews_unsaved_settings_only_for_the_demo(
+    hass: HomeAssistant, hass_ws_client
+) -> None:
+    entry, _ = await setup(hass)
+    c = entry.runtime_data
+    client = await hass_ws_client(hass)
+    await client.send_json(
+        {
+            "id": 1,
+            "type": f"{DOMAIN}/demo",
+            "light": LIGHT,
+            "preview": {"settings": {"normal_pct": 80}, "overrides": {"floor": 30}},
+        }
+    )
+    assert (await client.receive_json())["success"]
+    assert c._demo_values["normal_pct"] == 80  # previewed...
+    assert c._demo_ov["floor"] == 30
+    assert c.values["normal_pct"] == 50  # ...but nothing saved
+    assert c.overrides[LIGHT]["floor"] == 0
+    await client.send_json({"id": 2, "type": f"{DOMAIN}/demo_stop"})
+    assert (await client.receive_json())["success"]
+    assert c._demo_values is None
+    await teardown(hass, entry)

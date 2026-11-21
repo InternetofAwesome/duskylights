@@ -63,13 +63,17 @@ def test_js_curve_matches_python():
         assert g == pytest.approx(w, abs=1e-9)
 
 
-def test_panel_renders_and_drives_entities():
-    page = dom(f"{HARNESS}?act=1")
-    calls = out(page)
+def test_edits_are_a_draft_until_saved_and_the_demo_previews_them():
+    result = out(dom(f"{HARNESS}?act=1"))
+    calls, before = result["calls"], result["beforeSave"]
+    assert calls[:before] == []  # editing wrote nothing
+    ws = [c for c in calls if c[0] == "ws"]
+    assert [c[1] for c in ws] == ["duskylights/demo"]
+    preview = ws[0][2]["preview"]
+    assert preview["settings"]["normal_pct"] == 60  # the unsaved values
+    assert preview["settings"]["start_elevation"] == 12
+    assert preview["overrides"]["normal"] == 65
     sets = {c[2]["entity_id"]: c[2]["value"] for c in calls if c[1] == "set_value"}
-    assert sets["number.dusky_high"] == 60
-    assert sets["number.dusky_start_elevation"] == 12
-    assert sets["number.dusky_living_high"] == 65
+    assert sets == {"number.dusky_high": 55}  # discard dropped the rest
     pressed = [c[2]["entity_id"] for c in calls if c[0] == "button"]
     assert pressed == ["button.dusky_kitchen_release", "button.dusky_release_all"]
-    assert ["switch", "turn_on", {"entity_id": "switch.dusky_demo"}] in calls

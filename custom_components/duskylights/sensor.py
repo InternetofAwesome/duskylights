@@ -53,6 +53,12 @@ class TargetSensor(DuskyEntity, SensorEntity):
             "holding": hold is not None,
             "hold_brightness": hold,
             "demo": self.controller.demo_light == self.light,
+            "demo_elevation": (
+                None
+                if self.controller.demo_light != self.light
+                or self.controller.demo_elevation() is None
+                else round(self.controller.demo_elevation(), 2)
+            ),
         }
 
 

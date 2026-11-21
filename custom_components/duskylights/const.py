@@ -28,8 +28,8 @@ GLOBAL_NUMBERS: tuple[tuple[str, str, float, float, float, str | None], ...] = (
     (K_END, "End elevation", -30, 20, 0.5, "°"),
     (K_NORMAL, "High", 1, 100, 1, "%"),
     (K_FLOOR, "Low", 1, 100, 1, "%"),
-    (K_SHARP_START, "Start sharpness", 0, 3, 0.1, None),
-    (K_SHARP_END, "End sharpness", 0, 3, 0.1, None),
+    (K_SHARP_START, "Start sharpness", 0, 1, 0.05, None),
+    (K_SHARP_END, "End sharpness", 0, 1, 0.05, None),
 )
 
 TICK_S = 15.0  # normal controller tick

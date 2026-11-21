@@ -1,18 +1,50 @@
 // Dusky Lights panel: curve graph, settings, lights and demo controls.
 // Plain web component, no build step. It reads and writes the integration's own
-// entities through Home Assistant's `hass` object; it keeps no state of its own.
+// entities through Home Assistant's `hass` object. Edits stay a local draft until
+// Save is pressed; Discard drops them; the demo can run on the draft.
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
 // ---- curve maths (kept in step with curve.py; tests compare the two) --------
+// A jerk-limited S-curve: constant-jerk (cubic) entries into both plateaus, so the
+// ramp meets each plateau with zero slope and zero acceleration. Sharpness 0 is
+// the longest entry (a quarter of the ramp), 1 is no entry (a straight line).
+const MAX_ENTRY = 0.25;
+const entry = (sharpness) => MAX_ENTRY * (1 - clamp(sharpness, 0, 1));
+
 export function shape(x, a = 0, b = 0) {
-  a = clamp(a, 0, 3);
-  b = clamp(b, 0, 3);
-  x = clamp(x, 0, 1);
-  const h00 = 2 * x ** 3 - 3 * x ** 2 + 1;
-  const h10 = x ** 3 - 2 * x ** 2 + x;
-  const h11 = x ** 3 - x ** 2;
-  return clamp(h00 - a * h10 - b * h11, 0, 1);
+  if (x <= 0) return 1;
+  if (x >= 1) return 0;
+  const s = entry(a);
+  const e = entry(b);
+  const v = 1 / (1 - s - e); // slope of the middle section
+  const j1 = s > 1e-12 ? v / s ** 2 : 0;
+  const j2 = e > 1e-12 ? v / e ** 2 : 0;
+  const xc0 = 2 * s;
+  const xc1 = 1 - 2 * e;
+  const base = s > 1e-12 ? j1 * s ** 3 : 0;
+  let p;
+  if (s > 1e-12 && x < xc0) {
+    if (x <= s) {
+      p = (j1 * x ** 3) / 6;
+    } else {
+      const t = x - s;
+      p = (j1 * s ** 3) / 6 + ((j1 * s ** 2) / 2) * t + (j1 * s * t ** 2) / 2 - (j1 * t ** 3) / 6;
+    }
+  } else if (e > 1e-12 && x > xc1) {
+    const t = x - xc1;
+    const pc = v * (xc1 - 2 * s) + base;
+    if (t <= e) {
+      p = pc + v * t - (j2 * t ** 3) / 6;
+    } else {
+      const u = t - e;
+      const pce = pc + v * e - (j2 * e ** 3) / 6;
+      p = pce + (v / 2) * u - (j2 * e * u ** 2) / 2 + (j2 * u ** 3) / 6;
+    }
+  } else {
+    p = base + v * (x - 2 * s);
+  }
+  return clamp(1 - p, 0, 1);
 }
 
 export function progress(elevation, start, end) {
@@ -37,8 +69,8 @@ const SETTINGS = [
   ["end_elevation", "End elevation", "Sun elevation where the low level is reached"],
   ["normal_pct", "High", "Brightness during the day"],
   ["floor_pct", "Low", "Brightness at night"],
-  ["sharp_start", "Start sharpness", "0 = soft, 1 = straight, 3 = abrupt at the start"],
-  ["sharp_end", "End sharpness", "0 = soft, 1 = straight, 3 = abrupt at the end"],
+  ["sharp_start", "Start sharpness", "0 = longest smooth entry, 1 = straight into the plateau"],
+  ["sharp_end", "End sharpness", "0 = longest smooth entry, 1 = straight into the plateau"],
 ];
 
 const STYLE = `
@@ -48,6 +80,11 @@ const STYLE = `
 header { display:flex; align-items:center; gap:12px; height:56px; padding:0 16px;
   background:var(--app-header-background-color,var(--primary-color,#03a9f4)); color:var(--app-header-text-color,#fff); }
 header h1 { font-size:20px; font-weight:400; margin:0; flex:1; }
+header .actions { display:flex; align-items:center; gap:8px; }
+header .dirty { font-size:13px; opacity:.9; }
+header button { color:inherit; border-color:currentColor; padding:5px 12px; }
+header button.fill { background:#fff; color:var(--primary-color,#03a9f4); border-color:#fff; }
+header button:disabled { opacity:.45; }
 main { max-width:1100px; margin:0 auto; padding:16px; display:grid; gap:16px; }
 .card { background:var(--ha-card-background,var(--card-background-color,#fff)); border-radius:var(--ha-card-border-radius,12px);
   box-shadow:var(--ha-card-box-shadow,0 1px 3px rgba(0,0,0,.2)); padding:16px; min-width:0; }
@@ -99,7 +136,8 @@ class DuskyPanel extends HTMLElement {
     this._info = null;
     this._loading = false;
     this._error = null;
-    this._draft = {}; // entity_id -> value being dragged
+    this._draft = {}; // entity_id -> unsaved value (kept until saved or discarded)
+    this._d = { light: null, repeat: "Once", len: 0 }; // demo choices (local)
     this._narrow = false;
   }
 
@@ -159,10 +197,30 @@ class DuskyPanel extends HTMLElement {
   _call(domain, service, data) {
     return this._hass.callService(domain, service, data);
   }
-  _setNumber(id, value) {
+  _edit(id, value) {
     this._draft[id] = value;
-    const done = () => setTimeout(() => delete this._draft[id], 1500);
-    this._call("number", "set_value", { entity_id: id, value }).then(done, done);
+    this._update();
+  }
+  _dirtyIds() {
+    return Object.keys(this._draft);
+  }
+  async _save() {
+    const ids = this._dirtyIds();
+    this._saving = true;
+    this._update();
+    try {
+      await Promise.all(ids.map((id) => this._call("number", "set_value", { entity_id: id, value: this._draft[id] })));
+      this._saveError = null;
+    } catch (e) {
+      this._saveError = e && e.message ? e.message : String(e);
+    }
+    this._saving = false;
+    this._update();
+  }
+  _discard() {
+    this._draft = {};
+    this._saveError = null;
+    this._update();
   }
 
   // ---- build (once) -----------------------------------------------------------
@@ -170,7 +228,9 @@ class DuskyPanel extends HTMLElement {
     const info = this._info;
     const root = this.shadowRoot;
     root.innerHTML = `<style>${STYLE}</style>
-      <header><span id="menu"></span><h1>Dusky Lights</h1></header>
+      <header><span id="menu"></span><h1>Dusky Lights</h1>
+        <div class="actions"><span class="dirty" id="dirty"></span>
+          <button id="discard">Discard</button><button id="save" class="fill">Save</button></div></header>
       <main>
         <div class="two">
           <section class="card"><h2>Brightness follows the sun</h2><div id="graph"></div><div class="legend" id="legend"></div></section>
@@ -180,6 +240,9 @@ class DuskyPanel extends HTMLElement {
           <p style="margin:12px 0 0"><button id="releaseAll">Release all to the curve</button></p></section>
         <section class="card"><h2>Demo</h2><div class="demo-grid" id="demo"></div><p class="sub" id="demoNote"></p></section>
       </main>`;
+
+    root.getElementById("save").addEventListener("click", () => this._save());
+    root.getElementById("discard").addEventListener("click", () => this._discard());
 
     // sidebar menu button on narrow screens (element is provided by Home Assistant)
     if (customElements.get("ha-menu-button")) {
@@ -205,14 +268,12 @@ class DuskyPanel extends HTMLElement {
         <span class="sub">${esc(hint)}${a.unit_of_measurement ? " (" + esc(a.unit_of_measurement) + ")" : ""}</span>`;
       const [range, num] = row.querySelectorAll("input");
       range.addEventListener("input", () => {
-        this._draft[id] = parseFloat(range.value);
         num.value = range.value;
-        this._drawGraph();
+        this._edit(id, parseFloat(range.value));
       });
-      range.addEventListener("change", () => this._setNumber(id, parseFloat(range.value)));
       num.addEventListener("change", () => {
         const v = clamp(parseFloat(num.value), parseFloat(num.min), parseFloat(num.max));
-        if (Number.isFinite(v)) this._setNumber(id, v);
+        if (Number.isFinite(v)) this._edit(id, v);
       });
       box.appendChild(row);
       this._rows[key] = { id, range, num };
@@ -234,7 +295,7 @@ class DuskyPanel extends HTMLElement {
         const inp = tr.querySelector(cls);
         inp.addEventListener("change", () => {
           const v = inp.value === "" ? 0 : clamp(parseFloat(inp.value), 0, 100);
-          this._setNumber(id, Number.isFinite(v) ? v : 0);
+          this._edit(id, Number.isFinite(v) ? v : 0);
         });
         return inp;
       };
@@ -254,12 +315,12 @@ class DuskyPanel extends HTMLElement {
     }).observe(root.getElementById("graph"));
     root.getElementById("releaseAll").addEventListener("click", () => this._call("button", "press", { entity_id: info.release_all }));
 
-    // demo controls
-    const d = info.demo;
+    // demo controls: local choices; runs on what is on screen, saved or not
     const demo = root.getElementById("demo");
+    this._d.light = this._d.light || (info.lights[0] && info.lights[0].light);
     demo.innerHTML = `<div><label>Light</label><select id="dLight"></select></div>
-      <div><label>Repeat</label><select id="dRepeat"></select></div>
-      <div><label>Length (s, 0 = automatic)</label><input id="dLen" type="number" min="0" max="600" step="1"></div>
+      <div><label>Repeat</label><select id="dRepeat"><option>Once</option><option>Loop</option></select></div>
+      <div><label>Length (s, 0 = automatic)</label><input id="dLen" type="number" min="0" max="600" step="1" value="0"></div>
       <div><button id="dGo" class="fill"></button></div>`;
     this._demo = {
       light: demo.querySelector("#dLight"),
@@ -267,13 +328,45 @@ class DuskyPanel extends HTMLElement {
       len: demo.querySelector("#dLen"),
       go: demo.querySelector("#dGo"),
     };
-    this._demo.light.addEventListener("change", () => this._call("select", "select_option", { entity_id: d.light, option: this._demo.light.value }));
-    this._demo.repeat.addEventListener("change", () => this._call("select", "select_option", { entity_id: d.repeat, option: this._demo.repeat.value }));
-    this._demo.len.addEventListener("change", () => this._setNumber(d.length, clamp(parseFloat(this._demo.len.value) || 0, 0, 600)));
-    this._demo.go.addEventListener("click", () => {
-      const on = (this._state(d.switch) || {}).state === "on";
-      this._call("switch", on ? "turn_off" : "turn_on", { entity_id: d.switch });
+    this._demo.light.innerHTML = info.lights.map((l) => `<option value="${esc(l.light)}">${esc(l.name)}</option>`).join("");
+    this._demo.light.addEventListener("change", () => {
+      this._d.light = this._demo.light.value;
+      this._update();
     });
+    this._demo.repeat.addEventListener("change", () => (this._d.repeat = this._demo.repeat.value));
+    this._demo.len.addEventListener("change", () => (this._d.len = clamp(parseFloat(this._demo.len.value) || 0, 0, 600)));
+    this._demo.go.addEventListener("click", () => this._toggleDemo());
+  }
+
+  _demoRunning() {
+    const sw = this._state(this._info.demo.switch);
+    return !!sw && sw.state === "on";
+  }
+  _previewPayload(light) {
+    const s = this._info.settings;
+    const settings = {};
+    for (const key in s) settings[key] = this._num(s[key]);
+    const lt = this._info.lights.find((l) => l.light === light);
+    return { settings, overrides: { normal: this._num(lt.high, 0), floor: this._num(lt.low, 0) } };
+  }
+  async _toggleDemo() {
+    try {
+      if (this._demoRunning()) {
+        await this._hass.callWS({ type: "duskylights/demo_stop" });
+      } else {
+        await this._hass.callWS({
+          type: "duskylights/demo",
+          light: this._d.light,
+          seconds: this._d.len,
+          loop: this._d.repeat === "Loop",
+          preview: this._previewPayload(this._d.light),
+        });
+      }
+      this._demoError = null;
+    } catch (e) {
+      this._demoError = e && e.message ? e.message : String(e);
+    }
+    this._update();
   }
 
   // ---- update (every hass change) ---------------------------------------------
@@ -281,6 +374,22 @@ class DuskyPanel extends HTMLElement {
     if (!this._info || !this._rows) return;
     if (this._menu) this._menu.hass = this._hass;
     const active = this.shadowRoot.activeElement;
+
+    // a draft value that now equals the saved value is no longer a change
+    for (const id of Object.keys(this._draft)) {
+      const st = this._state(id);
+      const v = st ? parseFloat(st.state) : NaN;
+      if (Number.isFinite(v) && Math.abs(v - this._draft[id]) < 1e-9) delete this._draft[id];
+    }
+    const dirty = this._dirtyIds().length;
+    const root = this.shadowRoot;
+    root.getElementById("dirty").textContent = this._saveError
+      ? "Save failed: " + this._saveError
+      : dirty
+        ? `${dirty} unsaved change${dirty > 1 ? "s" : ""}`
+        : "";
+    root.getElementById("save").disabled = !dirty || this._saving;
+    root.getElementById("discard").disabled = !dirty || this._saving;
 
     for (const key in this._rows) {
       const { id, range, num } = this._rows[key];
@@ -317,24 +426,20 @@ class DuskyPanel extends HTMLElement {
     }
 
     // demo controls
-    const d = this._info.demo;
-    const sw = this._state(d.switch);
-    const running = sw && sw.state === "on";
-    const fill = (sel, st, fallback) => {
-      const opts = (st && st.attributes && st.attributes.options) || [];
-      if (sel.dataset.opts !== opts.join("|")) {
-        sel.innerHTML = opts.map((o) => `<option>${esc(o)}</option>`).join("");
-        sel.dataset.opts = opts.join("|");
-      }
-      if (this.shadowRoot.activeElement !== sel && st) sel.value = st.state;
-    };
-    fill(this._demo.light, this._state(d.light));
-    fill(this._demo.repeat, this._state(d.repeat));
-    if (this.shadowRoot.activeElement !== this._demo.len) this._demo.len.value = this._num(d.length, 0);
-    this._demo.go.textContent = running ? "Stop demo" : "Start demo";
+    const running = this._demoRunning();
+    if (active !== this._demo.light) this._demo.light.value = this._d.light || "";
+    if (active !== this._demo.repeat) this._demo.repeat.value = this._d.repeat;
+    if (active !== this._demo.len) this._demo.len.value = this._d.len;
+    for (const k of ["light", "repeat", "len"]) this._demo[k].disabled = running;
+    const lname = ((this._info.lights.find((l) => l.light === this._d.light) || {}).name) || "the light";
+    this._demo.go.textContent = running ? "Stop demo" : dirty ? "Preview unsaved" : "Start demo";
+    const sw = this._state(this._info.demo.switch);
     this._demo.go.disabled = !sw || sw.state === "unavailable";
-    this.shadowRoot.getElementById("demoNote").textContent =
-      "Plays a compressed dusk and dawn on one light, starting from where it is now, then puts it back as it was.";
+    root.getElementById("demoNote").textContent = this._demoError
+      ? "Could not start: " + this._demoError
+      : dirty
+        ? `Runs ${lname} with the unsaved values shown here. Nothing is saved until you press Save.`
+        : `Plays a compressed dusk and dawn on ${lname}, starting from where it is now, then puts it back as it was.`;
 
     this._drawGraph();
   }
@@ -385,12 +490,17 @@ class DuskyPanel extends HTMLElement {
     o.push(`<circle cx="${X(g.start)}" cy="${Y(g.high)}" r="5" fill="${AMBER}"/><circle cx="${X(g.end)}" cy="${Y(Math.min(g.low, g.high))}" r="5" fill="#d9567a"/>`);
 
     // live sun and each light's target
-    const elev = this._num(info.elevation);
+    const demoLight = info.lights.find((l) => {
+      const t = this._state(l.target);
+      return t && t.attributes && t.attributes.demo && t.attributes.demo_elevation != null;
+    });
+    const elev = demoLight ? this._state(demoLight.target).attributes.demo_elevation : this._num(info.elevation);
     if (Number.isFinite(elev)) {
       const ex = X(clamp(elev, xMin, xMax));
       o.push(`<line x1="${ex}" x2="${ex}" y1="${T}" y2="${H - B}" stroke="var(--primary-text-color,#333)" stroke-width="1" stroke-dasharray="4 3" opacity=".7"/>`);
-      o.push(`<text class="axis" x="${ex}" y="${T + 12}" text-anchor="${ex > W - 90 ? "end" : "start"}" dx="${ex > W - 90 ? -4 : 4}">sun ${fmt(elev, 1)}°</text>`);
+      o.push(`<text class="axis" x="${ex}" y="${T + 12}" text-anchor="${ex > W - 90 ? "end" : "start"}" dx="${ex > W - 90 ? -4 : 4}">${demoLight ? "demo sun" : "sun"} ${fmt(elev, 1)}°</text>`);
       info.lights.forEach((l, i) => {
+        if (demoLight && l !== demoLight) return; // only the demo light is moving
         const t = this._state(l.target);
         const v = t ? parseFloat(t.state) : NaN;
         if (Number.isFinite(v)) {

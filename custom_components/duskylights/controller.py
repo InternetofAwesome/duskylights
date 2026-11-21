@@ -21,6 +21,7 @@ from homeassistant.util import dt as dt_util
 from . import curve
 from .const import (
     DEFAULTS,
+    GLOBAL_NUMBERS,
     K_END,
     K_FLOOR,
     K_NORMAL,
@@ -62,6 +63,9 @@ class Controller:
         self.demo_engine: Engine | None = None
         self._demo_unsub: Callable[[], None] | None = None
         self._demo_restore: tuple[str, bool, int | None] | None = None
+        # unsaved settings a demo is previewing (None = use the saved ones)
+        self._demo_values: dict[str, float] | None = None
+        self._demo_ov: dict[str, float] | None = None
         # choices made in the UI (the demo switch uses these)
         self.demo_choice: str | None = self.lights[0] if self.lights else None
         self.demo_loop = False
@@ -136,16 +140,23 @@ class Controller:
             self._tick()
 
     # ---- curve ---------------------------------------------------------
-    def _pct(self, light: str, elevation: float) -> float:
-        ov = self.overrides.get(light, {})
+    def _pct(
+        self,
+        light: str,
+        elevation: float,
+        values: dict[str, float] | None = None,
+        ov: dict[str, float] | None = None,
+    ) -> float:
+        values = values or self.values
+        ov = self.overrides.get(light, {}) if ov is None else ov
         return curve.target_pct(
             elevation,
-            start=self.values[K_START],
-            end=self.values[K_END],
-            normal=ov.get("normal") or self.values[K_NORMAL],
-            floor=ov.get("floor") or self.values[K_FLOOR],
-            sharp_start=self.values[K_SHARP_START],
-            sharp_end=self.values[K_SHARP_END],
+            start=values[K_START],
+            end=values[K_END],
+            normal=ov.get("normal") or values[K_NORMAL],
+            floor=ov.get("floor") or values[K_FLOOR],
+            sharp_start=values[K_SHARP_START],
+            sharp_end=values[K_SHARP_END],
         )
 
     def live_elevation(self) -> float | None:
@@ -163,18 +174,24 @@ class Controller:
 
     def _demo_target(self, light: str) -> float:
         elev = self.demo.elevation(time.monotonic()) if self.demo else None
-        return self._live_target(light) if elev is None else self._pct(light, elev)
+        if elev is None:
+            return self._live_target(light)
+        return self._pct(light, elev, self._demo_values, self._demo_ov)
+
+    def demo_elevation(self) -> float | None:
+        """The sun elevation the running demo is showing, if one is running."""
+        return self.demo.elevation(time.monotonic()) if self.demo else None
 
     def target_pct(self, light: str) -> float:
         if self.demo and light == self.demo_light:
             return self._demo_target(light)
         return self._live_target(light)
 
-    def _in_ramp_window(self, elevation: float | None) -> bool:
-        return (
-            elevation is not None
-            and self.values[K_END] <= elevation < self.values[K_START]
-        )
+    def _in_ramp_window(
+        self, elevation: float | None, values: dict[str, float] | None = None
+    ) -> bool:
+        values = values or self.values
+        return elevation is not None and values[K_END] <= elevation < values[K_START]
 
     def holding(self, light: str) -> int | None:
         engine = self.demo_engine if light == self.demo_light else self.engine
@@ -284,7 +301,9 @@ class Controller:
             if elev is None:
                 self.async_stop_demo()
             else:
-                dawn = self.demo.rising(mono) and self._in_ramp_window(elev)
+                dawn = self.demo.rising(mono) and self._in_ramp_window(
+                    elev, self._demo_values
+                )
                 states = {self.demo_light: self._light_state(self.demo_light)}
                 self._run(self.demo_engine.tick(states, now=mono, dawn=dawn))
 
@@ -306,15 +325,41 @@ class Controller:
         self._timer = async_call_later(self.hass, interval, self._tick)
 
     # ---- demo ----------------------------------------------------------
-    def demo_ramp_seconds(self, light: str, total_s: float = 0.0) -> float:
+    def demo_ramp_seconds(
+        self,
+        light: str,
+        total_s: float = 0.0,
+        values: dict[str, float] | None = None,
+        ov: dict[str, float] | None = None,
+    ) -> float:
         """Real seconds for each ramp: from `total_s`, else the smoothest minimum."""
         if total_s > 0:
             return max(1.0, (total_s - 3 * HOLD_S) / 2)
-        swing = self._pct(light, self.values[K_START] + 1) - self._pct(
-            light, self.values[K_END] - 1
+        v = values or self.values
+        swing = self._pct(light, v[K_START] + 1, v, ov) - self._pct(
+            light, v[K_END] - 1, v, ov
         )
-        peak = curve.peak_slope(self.values[K_SHARP_START], self.values[K_SHARP_END])
-        return min_ramp_seconds(swing, peak)
+        return min_ramp_seconds(
+            swing, curve.peak_slope(v[K_SHARP_START], v[K_SHARP_END])
+        )
+
+    def _clean_preview(
+        self, light: str, preview: dict | None
+    ) -> tuple[dict[str, float] | None, dict[str, float] | None]:
+        """Validate and clamp unsaved settings sent by the panel."""
+        if not preview:
+            return None, None
+        values = dict(self.values)
+        limits = {key: (lo, hi) for key, _n, lo, hi, _s, _u in GLOBAL_NUMBERS}
+        for key, raw in (preview.get("settings") or {}).items():
+            if key in limits:
+                lo, hi = limits[key]
+                values[key] = min(hi, max(lo, float(raw)))
+        ov = dict(self.overrides.get(light, {"normal": 0.0, "floor": 0.0}))
+        for kind, raw in (preview.get("overrides") or {}).items():
+            if kind in ("normal", "floor"):
+                ov[kind] = min(100.0, max(0.0, float(raw)))
+        return values, ov
 
     async def async_start_demo(
         self,
@@ -323,13 +368,17 @@ class Controller:
         seconds: float = 0.0,
         day: date | None = None,
         loop: bool = False,
+        preview: dict | None = None,
     ) -> None:
         """Play one compressed dusk-and-dawn cycle of the real sun on one light.
 
         `seconds` is the whole cycle's length; 0 picks the shortest cycle in
-        which no tick changes the brightness by more than about 1 %.
+        which no tick changes the brightness by more than about 1 %. `preview`
+        holds unsaved settings to try instead of the saved ones:
+        {"settings": {key: value}, "overrides": {"normal": n, "floor": f}}.
         """
         self.async_stop_demo()
+        self._demo_values, self._demo_ov = self._clean_preview(light, preview)
         cfg = self.hass.config
         self.demo = Demo.cycle(
             lat=cfg.latitude,
@@ -338,9 +387,11 @@ class Controller:
             day=day or dt_util.now().date(),
             start_hour=12,
             started_at=time.monotonic(),
-            start_elev=self.values[K_START],
-            end_elev=self.values[K_END],
-            ramp_s=self.demo_ramp_seconds(light, seconds),
+            start_elev=(self._demo_values or self.values)[K_START],
+            end_elev=(self._demo_values or self.values)[K_END],
+            ramp_s=self.demo_ramp_seconds(
+                light, seconds, self._demo_values, self._demo_ov
+            ),
             loop=loop,
         )
         self.demo_light = light
@@ -352,10 +403,10 @@ class Controller:
         self.demo = replace(
             self.demo,
             start_offset_s=self.demo.start_offset(
-                lambda e: self._pct(light, e),
+                lambda e: self._pct(light, e, self._demo_values, self._demo_ov),
                 level,
-                high=self._pct(light, 90.0),
-                low=self._pct(light, -90.0),
+                high=self._pct(light, 90.0, self._demo_values, self._demo_ov),
+                low=self._pct(light, -90.0, self._demo_values, self._demo_ov),
             ),
         )
         self._demo_restore = (
@@ -391,6 +442,8 @@ class Controller:
         self.demo = None
         self.demo_light = None
         self.demo_engine = None
+        self._demo_values = None
+        self._demo_ov = None
         if self._demo_unsub:
             self._demo_unsub()
             self._demo_unsub = None

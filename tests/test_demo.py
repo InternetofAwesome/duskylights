@@ -167,14 +167,14 @@ class CycleTests(unittest.TestCase):
         self.assertIsNone(d.virtual_time(d.duration_s + 0.1))
 
     def test_min_ramp_seconds(self):
-        # 40 % swing, smoothstep peak slope 1.5, 0.25 s tick, 1 % steps -> 15 s
+        # 40 % swing, S-curve peak slope 2, 0.25 s tick, 1 % steps -> 20 s
         self.assertAlmostEqual(
-            demo.min_ramp_seconds(40.0, curve.peak_slope(0, 0)), 15.0, places=1
+            demo.min_ramp_seconds(40.0, curve.peak_slope(0, 0)), 20.0, places=1
         )
-        # sharper ends are steeper, so they need longer
+        # softer entries make the middle steeper, so they need longer
         self.assertGreater(
-            demo.min_ramp_seconds(40.0, curve.peak_slope(3, 3)),
             demo.min_ramp_seconds(40.0, curve.peak_slope(0, 0)),
+            demo.min_ramp_seconds(40.0, curve.peak_slope(1, 1)),
         )
 
     def test_auto_cycle_never_steps_more_than_about_one_percent(self):

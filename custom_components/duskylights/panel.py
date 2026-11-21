@@ -16,6 +16,7 @@ import voluptuous as vol
 from homeassistant.components import frontend, panel_custom, websocket_api
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_registry as er
 
 from .const import (
@@ -87,9 +88,56 @@ def ws_info(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
     connection.send_result(msg["id"], build_info(hass, entries[0]))
 
 
+PREVIEW = vol.Schema(
+    {
+        vol.Optional("settings"): {str: vol.Coerce(float)},
+        vol.Optional("overrides"): {str: vol.Coerce(float)},
+    }
+)
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{DOMAIN}/demo",
+        vol.Required("light"): cv.entity_domain("light"),
+        vol.Optional("seconds", default=0): vol.All(
+            vol.Coerce(float), vol.Range(min=0, max=600)
+        ),
+        vol.Optional("loop", default=False): cv.boolean,
+        vol.Optional("preview"): PREVIEW,
+    }
+)
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_demo(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    """Start a demo on one light, optionally with unsaved settings to try."""
+    entries = hass.config_entries.async_loaded_entries(DOMAIN)
+    if not entries:
+        connection.send_error(msg["id"], "not_loaded", "Dusky Lights is not set up")
+        return
+    await entries[0].runtime_data.async_start_demo(
+        msg["light"],
+        seconds=msg["seconds"],
+        loop=msg["loop"],
+        preview=msg.get("preview"),
+    )
+    connection.send_result(msg["id"])
+
+
+@websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/demo_stop"})
+@websocket_api.require_admin
+@callback
+def ws_demo_stop(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    for entry in hass.config_entries.async_loaded_entries(DOMAIN):
+        entry.runtime_data.async_stop_demo()
+    connection.send_result(msg["id"])
+
+
 @callback
 def async_setup_websocket(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_info)
+    websocket_api.async_register_command(hass, ws_demo)
+    websocket_api.async_register_command(hass, ws_demo_stop)
 
 
 async def async_register_panel(hass: HomeAssistant, version: str) -> None:

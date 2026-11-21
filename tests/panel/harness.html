@@ -52,7 +52,11 @@ if (q.get("mode") === "parity") {
   window.calls = [];
   const hass = () => ({
     states: { ...states },
-    callWS: async (m) => (m.type === "duskylights/info" ? info : Promise.reject(new Error("unexpected " + m.type))),
+    callWS: async (m) => {
+      if (m.type === "duskylights/info") return info;
+      window.calls.push(["ws", m.type, m]);
+      return null;
+    },
     callService: async (d, s, data) => {
       window.calls.push([d, s, data]);
       if (d === "number" && s === "set_value") states[data.entity_id] = { ...states[data.entity_id], state: String(data.value) };
@@ -66,14 +70,20 @@ if (q.get("mode") === "parity") {
     await new Promise((r) => setTimeout(r, 200));
     const r = el._rows;
     r.normal_pct.num.value = "60"; r.normal_pct.num.dispatchEvent(new Event("change"));
-    r.start_elevation.range.value = "12"; r.start_elevation.range.dispatchEvent(new Event("input")); r.start_elevation.range.dispatchEvent(new Event("change"));
+    r.start_elevation.range.value = "12"; r.start_elevation.range.dispatchEvent(new Event("input"));
     const rows = el.shadowRoot.querySelectorAll("#lights tbody tr");
     rows[0].querySelector(".hi").value = "65"; rows[0].querySelector(".hi").dispatchEvent(new Event("change"));
+    const sr = el.shadowRoot;
+    window.beforeSave = window.calls.length;               // nothing may be written yet
+    sr.getElementById("dGo").click();                       // preview the unsaved values on one light
+    await new Promise((r) => setTimeout(r, 50));
+    sr.getElementById("discard").click();                   // drop them...
+    r.normal_pct.num.value = "55"; r.normal_pct.num.dispatchEvent(new Event("change"));
+    sr.getElementById("save").click();                      // ...and save just one change
     rows[1].querySelector(".rel").click();
-    el.shadowRoot.getElementById("releaseAll").click();
-    el.shadowRoot.getElementById("dGo").click();
+    sr.getElementById("releaseAll").click();
     await new Promise((r) => setTimeout(r, 100));
-    const out = document.createElement("pre"); out.id = "out"; out.textContent = JSON.stringify(window.calls);
+    const out = document.createElement("pre"); out.id = "out"; out.textContent = JSON.stringify({ calls: window.calls, beforeSave: window.beforeSave });
     document.body.appendChild(out);
   }
 }

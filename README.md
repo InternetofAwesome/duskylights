@@ -32,7 +32,7 @@
 | **Follows the sun, not the clock** | The ramp is defined by sun *elevation*, so it shifts with the seasons by itself. Default: starts at +10°, floor reached at -6°. |
 | **Never brightens on you** | Dim a light by hand and it stays where you put it until the sun catches down, or you turn it off and on. |
 | **Set it once, tune per room** | Global high and low, with per-room overrides. Overrides of 0 mean "use the global value". |
-| **Shape the curve** | A sharpness control at each end, from soft to abrupt. |
+| **Smooth into the plateaus** | The ramp is a jerk-limited S-curve: it eases into the high and low levels with no kink. A sharpness control at each end shortens that easing, down to a straight line. |
 | **Smooth** | Sun elevation is interpolated between updates; changes are applied in about 1 % steps. |
 | **Try it fast** | Demo mode plays a whole day's sun, for today's date, over a few minutes on a single light. |
 | **Plain Home Assistant** | Only `light` entities and the built-in `sun` integration. Nothing to flash. |
@@ -91,8 +91,10 @@ live on the "Dusky" device: `number.dusky_high`, `number.dusky_low`,
 - Each light sits at a "normal" brightness; as the sun drops through a window of
   elevations it eases down to a "minimum". Defaults: ramp starts at +10°, floor
   reached at -6° (end of civil twilight). Dawn is the mirror image.
-- The curve is a cubic Hermite with a **sharpness** at each end: 0 = soft, 1 =
-  straight line, up to 3 = steep (never overshoots).
+- The curve is a jerk-limited S-curve: constant-jerk (cubic) easing into each
+  plateau, so there is no kink where the ramp meets the high or low level. The
+  **sharpness** at each end shortens that easing: 0 = longest and smoothest,
+  1 = a straight line into the plateau.
 - Global defaults, with optional per-room overrides (0 = use the global value).
 - Manual changes: dimming by hand holds that level until the sun's target falls
   below it; raising by hand holds until the light is turned off and on, or dawn.
@@ -134,8 +136,8 @@ the start of the dawn ramp if it is at the low level or off. A one-shot runs one
 full cycle from there, then puts the light back as it was.
 
 With the default length it is the shortest cycle in which no step changes the
-brightness by more than about 1 %: about 15 s per ramp at the default settings,
-30-35 s in all. Sharper curves take longer.
+brightness by more than about 1 %: about 20 s per ramp at the default settings,
+45 s or so in all. Softer curves take longer (about 20 s per ramp at the defaults).
 
 From the UI (device "Dusky"): choose **Demo light**, **Demo repeat** (Once or
 Loop) and **Demo length** (seconds, 0 = automatic), then turn on **Demo**.

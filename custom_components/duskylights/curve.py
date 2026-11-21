@@ -1,21 +1,25 @@
 """Pure maths for the dusk dimming curve. No Home Assistant imports.
 
-The curve is a cubic Hermite from 1 (normal) at x=0 to 0 (floor) at x=1, where
-x is how far the sun has moved through the elevation window. The two sharpness
-values are the slope at each end relative to a straight line:
+The curve runs from 1 (normal) at x=0 to 0 (floor) at x=1, where x is how far the
+sun has moved through the elevation window. It is a jerk-limited ("S-curve")
+ramp: the way into each plateau is a cubic with constant jerk, so the brightness
+reaches the plateau with zero slope AND zero acceleration (no kink, no sudden
+change of acceleration). The two sharpness values set how long that constant-jerk
+entry lasts at each end, as a fraction of the ramp:
 
-    0 -> flat tangent (soft start/arrival), 1 -> same slope as a straight line,
-    3 -> the steepest slope that stays monotonic (no overshoot).
+    sharpness 0 -> the longest entry, a quarter of the ramp (a pure four-phase
+                   S-curve, steepest through the middle),
+    sharpness 1 -> no entry at all: a straight line straight into the plateau.
 
-    f(x) = (2x^3 - 3x^2 + 1) - a*(x^3 - 2x^2 + x) - b*(x^3 - x^2)
-
-a = sharpness at the "normal" end, b = sharpness at the floor end.
-a = b = 1 is exactly a straight line; a = b = 0 is smoothstep.
+Between the two entries the slope is constant. With entry fractions s (start) and
+e (end), the middle slope is v = 1 / (1 - s - e); each entry is a pair of
+constant-jerk pieces whose acceleration rises linearly then falls linearly to 0.
 """
 
 from __future__ import annotations
 
-MAX_SHARPNESS = 3.0
+MAX_SHARPNESS = 1.0
+MAX_ENTRY = 0.25  # entry length at sharpness 0, as a fraction of the ramp
 MIN_SEGMENT_S = 30.0  # readings closer than this give a meaningless slope
 MAX_SEGMENT_S = 1800.0  # readings further apart than this are stale
 
@@ -27,21 +31,49 @@ def progress(elevation: float, start: float, end: float) -> float:
     return min(1.0, max(0.0, (start - elevation) / (start - end)))
 
 
+def _entry(sharpness: float) -> float:
+    """Length of the constant-jerk entry (fraction of the ramp) for a sharpness."""
+    return MAX_ENTRY * (1.0 - min(MAX_SHARPNESS, max(0.0, sharpness)) / MAX_SHARPNESS)
+
+
 def shape(x: float, a: float = 0.0, b: float = 0.0) -> float:
-    """Curve value in [0, 1] for progress x (1 = normal, 0 = floor)."""
-    a = min(MAX_SHARPNESS, max(0.0, a))
-    b = min(MAX_SHARPNESS, max(0.0, b))
-    x = min(1.0, max(0.0, x))
-    h00 = 2 * x**3 - 3 * x**2 + 1
-    h10 = x**3 - 2 * x**2 + x
-    h11 = x**3 - x**2
-    return min(1.0, max(0.0, h00 - a * h10 - b * h11))
+    """Curve value in [0, 1] for progress x (1 = normal, 0 = floor).
+
+    `a` is the sharpness at the normal end, `b` at the floor end.
+    """
+    if x <= 0.0:
+        return 1.0
+    if x >= 1.0:
+        return 0.0
+    s, e = _entry(a), _entry(b)
+    v = 1.0 / (1.0 - s - e)  # slope of the middle section
+    # position travelled (0..1) along the ramp, built from constant-jerk pieces
+    j1 = v / s**2 if s > 1e-12 else 0.0
+    j2 = v / e**2 if e > 1e-12 else 0.0
+    xc0, xc1 = 2 * s, 1 - 2 * e  # the constant-slope middle
+    if s > 1e-12 and x < xc0:
+        if x <= s:
+            p = j1 * x**3 / 6
+        else:
+            t = x - s
+            p = j1 * s**3 / 6 + (j1 * s**2 / 2) * t + j1 * s * t**2 / 2 - j1 * t**3 / 6
+    elif e > 1e-12 and x > xc1:
+        t = x - xc1
+        p_c = v * (xc1 - 2 * s) + (j1 * s**3 if s > 1e-12 else 0.0)
+        if t <= e:
+            p = p_c + v * t - j2 * t**3 / 6
+        else:
+            u = t - e
+            p_ce = p_c + v * e - j2 * e**3 / 6
+            p = p_ce + (v / 2) * u - j2 * e * u**2 / 2 + j2 * u**3 / 6
+    else:
+        p = (j1 * s**3 if s > 1e-12 else 0.0) + v * (x - 2 * s)
+    return min(1.0, max(0.0, 1.0 - p))
 
 
 def peak_slope(a: float = 0.0, b: float = 0.0) -> float:
-    """Steepest |d shape / d progress| over the ramp (1.5 for sharpness 0)."""
-    n = 400
-    return max(abs(shape((i + 1) / n, a, b) - shape(i / n, a, b)) * n for i in range(n))
+    """Steepest |d shape / d progress| over the ramp (2 at sharpness 0)."""
+    return 1.0 / (1.0 - _entry(a) - _entry(b))
 
 
 def target_pct(
