@@ -109,8 +109,9 @@ Plays one compressed cycle of the real sun for today's date (or any `date`) on
 exactly **one** light: the dusk ramp, the dawn ramp, and a short hold on each
 flat stretch between. With the default length it is the shortest cycle in which
 no step changes the brightness by more than about 1 %: about 15 s per ramp at
-the default settings, 30-35 s in all. Sharper curves take longer. The light is
-put back as it was when the demo ends.
+the default settings, 30-35 s in all. Sharper curves take longer. It starts at the light's current brightness (part-way down the dusk
+ramp), or at the daytime level if the light is off, and the light is put back as
+it was when the demo ends.
 
 From the UI (device "Dusky"): choose **Demo light**, **Demo repeat** (Once or
 Loop) and **Demo length** (seconds, 0 = automatic), then turn on **Demo**.

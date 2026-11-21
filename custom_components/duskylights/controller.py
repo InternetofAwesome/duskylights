@@ -8,11 +8,13 @@ from __future__ import annotations
 
 import logging
 import time
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from homeassistant.components.light import ATTR_BRIGHTNESS, ATTR_TRANSITION
 from homeassistant.const import ATTR_ENTITY_ID, STATE_ON
 from homeassistant.core import Context, HomeAssistant, callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.event import async_call_later, async_track_state_change_event
 from homeassistant.util import dt as dt_util
 
@@ -344,6 +346,15 @@ class Controller:
         self.demo_light = light
         self.demo_engine = Engine(self._demo_target)
         state = self.hass.states.get(light)
+        # Start where the light is now; if it is off, start at the daytime level.
+        cur = state.attributes.get(ATTR_BRIGHTNESS) if state else None
+        if state and state.state == STATE_ON and cur:
+            self.demo = replace(
+                self.demo,
+                start_offset_s=self.demo.offset_for_level(
+                    lambda e: self._pct(light, e), cur * 100 / 255
+                ),
+            )
         self._demo_restore = (
             light,
             bool(state and state.state == STATE_ON),
@@ -388,14 +399,17 @@ class Controller:
 
     async def _restore(self, light: str, was_on: bool, bri: int | None) -> None:
         """Put the light back as it was before the demo."""
-        if was_on:
-            data = {ATTR_ENTITY_ID: light, ATTR_TRANSITION: 1}
-            if bri is not None:
-                data[ATTR_BRIGHTNESS] = bri
-            await self.hass.services.async_call(
-                "light", "turn_on", data, context=self.context
-            )
-        else:
-            await self.hass.services.async_call(
-                "light", "turn_off", {ATTR_ENTITY_ID: light}, context=self.context
-            )
+        try:
+            if was_on:
+                data = {ATTR_ENTITY_ID: light, ATTR_TRANSITION: 1}
+                if bri is not None:
+                    data[ATTR_BRIGHTNESS] = bri
+                await self.hass.services.async_call(
+                    "light", "turn_on", data, context=self.context
+                )
+            else:
+                await self.hass.services.async_call(
+                    "light", "turn_off", {ATTR_ENTITY_ID: light}, context=self.context
+                )
+        except HomeAssistantError:
+            _LOGGER.warning("Could not restore %s after the demo", light)

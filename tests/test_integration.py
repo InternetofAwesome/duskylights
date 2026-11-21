@@ -299,3 +299,31 @@ async def test_demo_switch_uses_ui_choices_and_restores_light(
     assert hass.states.get(switch).state == "off"
     assert calls[-1].data["brightness"] == 20  # back where it was before the demo
     await teardown(hass, entry)
+
+
+async def test_demo_starts_at_current_brightness(hass: HomeAssistant) -> None:
+    entry, calls = await setup(hass, brightness=60)  # 23.5 %: part-way down the ramp
+    await hass.services.async_call(
+        DOMAIN, "demo", {"entity_id": LIGHT, "date": "2026-06-21"}, blocking=True
+    )
+    await hass.async_block_till_done()
+    assert abs(calls[0].data["brightness"] - 60) <= 3
+    await hass.services.async_call(DOMAIN, "demo_stop", {}, blocking=True)
+    await teardown(hass, entry)
+
+
+async def test_demo_starts_at_daytime_level_when_light_is_off(
+    hass: HomeAssistant,
+) -> None:
+    entry, calls = await setup(hass)
+    off_calls = async_mock_service(hass, "light", "turn_off")
+    set_light(hass, False)
+    await hass.services.async_call(
+        DOMAIN, "demo", {"entity_id": LIGHT, "date": "2026-06-21"}, blocking=True
+    )
+    await hass.async_block_till_done()
+    assert calls[0].data["brightness"] == 128  # 50 %: the daytime level
+    await hass.services.async_call(DOMAIN, "demo_stop", {}, blocking=True)
+    await hass.async_block_till_done()
+    assert off_calls and off_calls[-1].data["entity_id"] == LIGHT  # restored to off
+    await teardown(hass, entry)

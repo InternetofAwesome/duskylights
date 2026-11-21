@@ -6,6 +6,7 @@ Pure logic. The Home Assistant glue swaps the live sun reading for
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, tzinfo
 
@@ -42,6 +43,9 @@ class Demo:
     # Optional (real_s, virtual_s) keyframes; empty means a uniform 24 h.
     keys: tuple[tuple[float, float], ...] = ()
     tick_s: float | None = None  # fixed tick interval, if set
+    start_offset_s: float = (
+        0.0  # real seconds into the cycle at which `started_at` sits
+    )
 
     @classmethod
     def cycle(
@@ -121,13 +125,39 @@ class Demo:
 
     def progress(self, now: float) -> float | None:
         """Fraction of the virtual day elapsed, or None once a one-shot demo ends."""
-        p = (now - self.started_at) / self.duration_s
+        p = (now - self.started_at + self.start_offset_s) / self.duration_s
         if p >= 1.0 and not self.loop:
             return None
         p = p % 1.0 if self.loop else max(0.0, p)
+        return self._fraction_at(p * self.duration_s)
+
+    def _fraction_at(self, real: float) -> float:
+        """Fraction of the virtual day shown `real` seconds into the cycle."""
         if not self.keys:
-            return p
-        return self._virtual_offset(p * self.duration_s) / DAY_S
+            return real / self.duration_s
+        return self._virtual_offset(real) / DAY_S
+
+    def elevation_at(self, real: float) -> float:
+        """Sun elevation `real` seconds into the cycle (ignores the start offset)."""
+        vt = self.virtual_start + timedelta(seconds=self._fraction_at(real) * DAY_S)
+        return solar_elevation(self.lat, self.lon, vt)
+
+    def offset_for_level(
+        self, pct_at: Callable[[float], float], level: float, step: float = 0.05
+    ) -> float:
+        """Real seconds into the cycle where the dusk ramp reaches `level` percent.
+
+        A light that is already dimmer than the daytime level starts part-way
+        down the dusk ramp; one at or below the low level starts on the low
+        plateau; one at or above the high level starts at the top (0).
+        """
+        limit = self.keys[3][0] if len(self.keys) > 3 else self.duration_s / 2
+        t = 0.0
+        while t < limit:
+            if pct_at(self.elevation_at(t)) <= level + 0.5:
+                return t
+            t += step
+        return self.keys[2][0] if len(self.keys) > 2 else 0.0
 
     def _virtual_offset(self, real: float) -> float:
         for (r0, v0), (r1, v1) in zip(self.keys, self.keys[1:], strict=False):
