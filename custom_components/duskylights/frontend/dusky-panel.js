@@ -65,12 +65,18 @@ const SERIES = ["#2f80ed", "#27ae60", "#9b51e0", "#e0568a", "#16a2a2", "#c8791c"
 const AMBER = "#f2a33a";
 
 const SETTINGS = [
-  ["start_elevation", "Start elevation", "Sun elevation where dimming begins"],
-  ["end_elevation", "End elevation", "Sun elevation where the low level is reached"],
-  ["normal_pct", "High", "Brightness during the day"],
-  ["floor_pct", "Low", "Brightness at night"],
-  ["sharp_start", "Start sharpness", "0 = longest smooth entry, 1 = straight into the plateau"],
-  ["sharp_end", "End sharpness", "0 = longest smooth entry, 1 = straight into the plateau"],
+  ["start_elevation", "Dim starts at", "Sun height when dimming begins",
+    "How high the sun is, in degrees above the horizon. 0\u00b0 is sunset; higher numbers start dimming earlier in the afternoon."],
+  ["end_elevation", "Dimmest at", "Sun height when night level is reached",
+    "Negative means the sun is below the horizon. -6\u00b0 is about when civil twilight ends."],
+  ["normal_pct", "Day brightness", "How bright lights are in daytime",
+    "Lights ease down from this level at dusk, and back up to it at dawn."],
+  ["floor_pct", "Night brightness", "How dim lights get at night",
+    "The lowest level the schedule will set. You can still dim further by hand."],
+  ["sharp_start", "Start sharpness", "0 = very gentle, 1 = no easing",
+    "How abruptly dimming begins. 0 eases in as slowly as possible; 1 starts at full speed."],
+  ["sharp_end", "End sharpness", "0 = very gentle, 1 = no easing",
+    "How abruptly dimming stops at the night level. 0 eases to a stop; 1 stops at full speed."],
 ];
 
 const STYLE = `
@@ -95,7 +101,7 @@ main { max-width:1100px; margin:0 auto; padding:16px; display:grid; gap:16px; }
 svg { width:100%; height:auto; display:block; }
 .axis { fill:var(--secondary-text-color,#727272); font-size:12px; }
 .grid { stroke:var(--divider-color,#e0e0e0); stroke-width:1; }
-.row { display:grid; grid-template-columns:minmax(90px,1fr) minmax(0,2fr) 76px; gap:10px; align-items:center; padding:6px 0; }
+.row { display:grid; grid-template-columns:minmax(130px,1fr) minmax(0,2fr) 76px; gap:10px; align-items:center; padding:6px 0; }
 .row label { font-size:14px; }
 .row .sub { grid-column:1 / -1; margin-top:-4px; }
 input[type=range] { width:100%; accent-color:var(--primary-color,#03a9f4); }
@@ -103,7 +109,7 @@ input[type=number], select { width:100%; padding:6px 8px; font:inherit; color:in
   border:1px solid var(--divider-color,#ccc); border-radius:6px; }
 tr.sel { background:color-mix(in srgb, var(--primary-color,#03a9f4) 12%, transparent); }
 .addrow { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:12px; }
-.addrow select { max-width:100%; }
+.addrow select { max-width:100%; min-width:220px; flex:1 1 220px; }
 button { font:inherit; cursor:pointer; padding:7px 14px; border-radius:8px; border:1px solid var(--primary-color,#03a9f4);
   background:transparent; color:var(--primary-color,#03a9f4); }
 button.fill { background:var(--primary-color,#03a9f4); color:var(--text-primary-color,#fff); }
@@ -285,15 +291,15 @@ class DuskyPanel extends HTMLElement {
     root.innerHTML = `<style>${STYLE}</style>
       <header><span id="menu"></span><h1>Dusky Lights</h1>
         <div class="actions"><span class="dirty" id="dirty"></span>
-          <button id="discard">Discard</button><button id="save" class="fill">Save</button></div></header>
+          <button id="discard" title="Throw away unsaved changes">Discard</button><button id="save" class="fill" title="Apply your changes to the lights">Save</button></div></header>
       <main>
         <div class="two">
           <section class="card"><h2>Brightness follows the sun</h2><div id="graph"></div><div class="legend" id="legend"></div><p class="sub" id="times"></p></section>
           <section class="card"><h2>Settings</h2><div id="settings"></div></section>
         </div>
         <section class="card"><h2>Lights</h2><div style="overflow-x:auto"><table id="lights"></table></div>
-          <p style="margin:12px 0 0"><button id="releaseAll" title="Cancel every manual dim and let all lights follow the sun again">Resume auto for all lights</button></p>
-          <div class="addrow"><select id="addSel"></select><button id="addBtn">Add light</button>
+          <p style="margin:12px 0 0"><button id="releaseAll" title="Cancel every manual dim so all lights follow the sun again">Resume all</button></p>
+          <div class="addrow"><select id="addSel"></select><button id="addBtn" title="Have Dusky manage the selected light">Add light</button>
             <span class="sub" id="addNote"></span></div></section>
         <section class="card"><h2>Demo</h2><div class="demo-grid" id="demo"></div><p class="sub" id="demoNote"></p></section>
       </main>`;
@@ -313,12 +319,13 @@ class DuskyPanel extends HTMLElement {
     // settings rows
     this._rows = {};
     const box = root.getElementById("settings");
-    for (const [key, label, hint] of SETTINGS) {
+    for (const [key, label, hint, tip] of SETTINGS) {
       const id = info.settings[key];
       const st = this._state(id);
       const a = (st && st.attributes) || {};
       const row = document.createElement("div");
       row.className = "row";
+      row.title = tip;
       row.innerHTML = `<label>${esc(label)}</label>
         <input type="range" min="${a.min ?? 0}" max="${a.max ?? 100}" step="${a.step ?? 1}">
         <input type="number" min="${a.min ?? 0}" max="${a.max ?? 100}" step="${a.step ?? 1}">
@@ -339,18 +346,21 @@ class DuskyPanel extends HTMLElement {
 
     // lights table
     const table = root.getElementById("lights");
-    table.innerHTML = `<thead><tr><th>Light</th><th>Now</th><th>Target</th>
-      <th>High</th><th>Low</th><th>State</th><th></th></tr></thead><tbody></tbody>`;
+    table.innerHTML = `<thead><tr><th>Light</th><th title="What the light is at right now">Now</th>
+      <th title="What Dusky wants it to be right now, following the sun">Should be</th>
+      <th title="Day brightness for this light. Empty uses the global setting.">Day</th>
+      <th title="Night brightness for this light. Empty uses the global setting.">Night</th>
+      <th title="Auto follows the sun. Manual means you dimmed it by hand.">Mode</th><th></th></tr></thead><tbody></tbody>`;
     this._lightRows = info.lights.map((l, i) => {
       const tr = document.createElement("tr");
       tr.innerHTML = `<td><span class="dot" style="background:${SERIES[i % SERIES.length]}"></span><span class="name"></span></td>
-        <td data-l="Now" class="now"></td><td data-l="Target" class="target"></td>
-        <td data-l="High"><input type="number" class="hi" min="0" max="100" step="1"></td>
-        <td data-l="Low"><input type="number" class="lo" min="0" max="100" step="1"></td>
-        <td data-l="State" class="state"></td><td><button class="rel" title="Cancel the manual dim and let this light follow the sun again">Resume auto</button> <button class="rm" title="Stop managing this light">Remove</button></td>`;
+        <td data-l="Now" class="now"></td><td data-l="Should be" class="target"></td>
+        <td data-l="Day"><input type="number" class="hi" min="0" max="100" step="1"></td>
+        <td data-l="Night"><input type="number" class="lo" min="0" max="100" step="1"></td>
+        <td data-l="Mode" class="state"></td><td><button class="rel" title="You dimmed this light by hand. Click to let it follow the sun again.">Resume auto</button> <button class="rm" title="Stop Dusky managing this light. The light itself is not changed.">Remove</button></td>`;
       tr.querySelector(".name").textContent = l.name;
       tr.querySelector("td").style.cursor = "pointer";
-      tr.querySelector("td").title = "Show this light's curve on the graph";
+      tr.querySelector("td").title = "Click to see this light's own curve on the graph";
       tr.querySelector("td").addEventListener("click", () => {
         this._sel = this._sel === l.light ? null : l.light;
         this._drawGraph();
@@ -376,7 +386,7 @@ class DuskyPanel extends HTMLElement {
       return { l, tr, hi, lo };
     });
     const sel = root.getElementById("addSel");
-    sel.innerHTML = `<option value="">Add a light…</option>` +
+    sel.innerHTML = `<option value="">Choose a light to add…</option>` +
       (info.candidates || []).map((c) => `<option value="${esc(c.light)}">${esc(c.name)} (${esc(c.light)})</option>`).join("");
     root.getElementById("addBtn").addEventListener("click", () => {
       if (sel.value) this._setLights([...info.lights.map((x) => x.light), sel.value]);
@@ -397,9 +407,9 @@ class DuskyPanel extends HTMLElement {
     // demo controls: local choices; runs on what is on screen, saved or not
     const demo = root.getElementById("demo");
     if (!info.lights.some((l) => l.light === this._d.light)) this._d.light = info.lights[0] && info.lights[0].light;
-    demo.innerHTML = `<div><label>Light</label><select id="dLight"></select></div>
-      <div><label>Repeat</label><select id="dRepeat"><option>Once</option><option>Loop</option></select></div>
-      <div><label>Length (s, 0 = automatic)</label><input id="dLen" type="number" min="0" max="600" step="1" value="0"></div>
+    demo.innerHTML = `<div><label>Light</label><select id="dLight" title="The light to run the demo on"></select></div>
+      <div><label>Repeat</label><select id="dRepeat" title="Once plays one day and night. Loop keeps going until you stop it."><option>Once</option><option>Loop</option></select></div>
+      <div><label>Seconds (0 = auto)</label><input id="dLen" title="How long the demo takes. 0 picks a length that looks smooth." type="number" min="0" max="600" step="1" value="0"></div>
       <div><button id="dGo" class="fill"></button></div>`;
     this._demo = {
       light: demo.querySelector("#dLight"),
@@ -503,8 +513,8 @@ class DuskyPanel extends HTMLElement {
       r.tr.querySelector(".state").innerHTML = demo
         ? '<span class="badge demo">demo</span>'
         : holding
-          ? `<span class="badge hold">manual ${fmt(((t.attributes.hold_brightness || 0) * 100) / 255, 0)}%</span>`
-          : '<span class="badge">auto</span>';
+          ? `<span class="badge hold" title="You dimmed it by hand. It stays there until the sun's curve catches down to it.">manual ${fmt(((t.attributes.hold_brightness || 0) * 100) / 255, 0)}%</span>`
+          : '<span class="badge" title="Following the sun">auto</span>';
       const set = (inp, id, glob) => {
         if (this.shadowRoot.activeElement === inp) return;
         const v = this._num(id, 0);
@@ -523,11 +533,12 @@ class DuskyPanel extends HTMLElement {
     if (active !== this._demo.len) this._demo.len.value = this._d.len;
     for (const k of ["light", "repeat", "len"]) this._demo[k].disabled = running;
     const lname = ((this._info.lights.find((l) => l.light === this._d.light) || {}).name) || "the light";
-    this._demo.go.textContent = running ? "Stop demo" : dirty ? "Preview unsaved" : "Start demo";
+    this._demo.go.title = "Plays a quick dusk and dawn on this one light, then puts it back as it was";
+    this._demo.go.textContent = running ? "Stop demo" : dirty ? "Try changes" : "Start demo";
     const sw = this._state(this._info.demo.switch);
     this._demo.go.disabled = !this._info.lights.length || !sw || sw.state === "unavailable";
     root.getElementById("demoNote").textContent = !this._info.lights.length
-      ? "Add a light in the integration's options to run a demo."
+      ? "Add a light above to run a demo."
       : this._demoError
       ? "Could not start: " + this._demoError
       : dirty
@@ -634,7 +645,7 @@ class DuskyPanel extends HTMLElement {
     this.shadowRoot.getElementById("legend").innerHTML =
       (sel
         ? `<span><b>${esc(sel.name)}</b>: High ${fmt(this._lightParams(sel, g).high, 0)}%, Low ${fmt(this._lightParams(sel, g).low, 0)}% (dashed = global)</span>`
-        : `<span class="sub">Click a light's name below to see its own curve.</span>`) +
+        : `<span class="sub">Click a light's name below to see just its curve.</span>`) +
       `<span><span class="dot" style="background:${AMBER}"></span>global curve</span>` +
       info.lights
         .map((l, i) => `<span><span class="dot" style="background:${SERIES[i % SERIES.length]}"></span>${esc(l.name)}</span>`)
