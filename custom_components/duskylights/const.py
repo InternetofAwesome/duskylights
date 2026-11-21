@@ -32,6 +32,10 @@ GLOBAL_NUMBERS: tuple[tuple[str, str, float, float, float, str | None], ...] = (
     (K_SHARP_END, "End sharpness", 0, 1, 0.05, None),
 )
 
+# Per-light overrides beyond High/Low. Unset (None) means "follow the global value";
+# 0 is a legitimate value for these, so they cannot use High/Low's "0 = global" trick.
+PER_LIGHT_KEYS = (K_START, K_END, K_SHARP_START, K_SHARP_END)
+
 TICK_S = 15.0  # normal controller tick
 TRANSITION_S = 2.0  # light transition for our own commands
 TURN_ON_DELAY_S = 0.5  # let a light finish turning on before we set its level

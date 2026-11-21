@@ -126,6 +126,11 @@ tr.sel { background:color-mix(in srgb, var(--primary-color,#03a9f4) 12%, transpa
 #tip { position:fixed; display:none; z-index:10; max-width:45ch; padding:8px 11px; border-radius:8px; font-size:13px; line-height:1.4; pointer-events:none;
   color:var(--primary-text-color,#333); border:1px solid var(--divider-color,#ddd);
   background:color-mix(in srgb, var(--primary-text-color,#333) 5%, var(--card-background-color,#fff)); box-shadow:0 2px 10px rgba(0,0,0,.15); }
+[hidden] { display:none !important; }
+.sethead { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+.sethead h2 { margin:0; }
+.lnk { background:none; border:0; padding:0; margin-left:8px; color:var(--primary-color,#03a9f4); font-size:13px; cursor:pointer; }
+.row.inh input[type=number] { color:var(--secondary-text-color,#888); font-style:italic; }
 .addrow { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:12px; }
 .addrow { align-items:flex-end; }
 .combo { position:relative; flex:1 1 260px; min-width:220px; }
@@ -282,7 +287,7 @@ class DuskyPanel extends HTMLElement {
     return id && this._hass ? this._hass.states[id] : undefined;
   }
   _num(id, fallback = NaN) {
-    if (id in this._draft) return this._draft[id];
+    if (id in this._draft) return this._draft[id] === null ? fallback : this._draft[id];
     const s = this._state(id);
     const v = s ? parseFloat(s.state) : NaN;
     return Number.isFinite(v) ? v : fallback;
@@ -299,9 +304,24 @@ class DuskyPanel extends HTMLElement {
     };
   }
   _lightParams(light, g) {
-    const hi = this._num(light.high, 0);
-    const lo = this._num(light.low, 0);
-    return { ...g, high: hi || g.high, low: lo || g.low };
+    // a light's own value where it has one, else the global one (High/Low use 0 for "global")
+    const pick = (id, glob, zero) => {
+      const v = this._num(id, NaN);
+      return Number.isFinite(v) && !(zero && v === 0) ? v : glob;
+    };
+    return {
+      start: pick(light.start_elevation, g.start),
+      end: pick(light.end_elevation, g.end),
+      high: pick(light.high, g.high, true),
+      low: pick(light.low, g.low, true),
+      sharpStart: pick(light.sharp_start, g.sharpStart),
+      sharpEnd: pick(light.sharp_end, g.sharpEnd),
+    };
+  }
+  _rowId(key) {
+    const sel = this._info.lights.find((l) => l.light === this._sel);
+    const lf = { normal_pct: "high", floor_pct: "low" }[key] || key;
+    return (sel && sel[lf]) || this._info.settings[key];
   }
   _call(domain, service, data) {
     return this._hass.callService(domain, service, data);
@@ -318,7 +338,11 @@ class DuskyPanel extends HTMLElement {
     this._saving = true;
     this._update();
     try {
-      await Promise.all(ids.map((id) => this._call("number", "set_value", { entity_id: id, value: this._draft[id] })));
+      await Promise.all(ids.map((id) =>
+        this._draft[id] === null
+          ? this._call("duskylights", "clear_override", { entity_id: id })
+          : this._call("number", "set_value", { entity_id: id, value: this._draft[id] }),
+      ));
       this._saveError = null;
     } catch (e) {
       this._saveError = e && e.message ? e.message : String(e);
@@ -353,7 +377,7 @@ class DuskyPanel extends HTMLElement {
       <main>
         <div class="two">
           <section class="card"><h2>Brightness follows the sun</h2><div id="graph"></div><div class="legend" id="legend"></div><p class="sub" id="times"></p></section>
-          <section class="card"><h2>Settings</h2><div id="settings"></div></section>
+          <section class="card"><div class="sethead"><h2 id="setTitle">Settings</h2><button id="setAll" hidden data-tip="Go back to editing the settings every light shares">All lights</button></div><p class="sub" id="setNote"></p><div id="settings"></div></section>
         </div>
         <section class="card"><h2>Lights</h2><div style="overflow-x:auto"><table id="lights"></table></div>
           <p style="margin:12px 0 0"><button id="releaseAll" data-tip="Cancel every manual dim so all lights follow the sun again">Resume all</button></p>
@@ -378,29 +402,36 @@ class DuskyPanel extends HTMLElement {
     this._rows = {};
     const box = root.getElementById("settings");
     for (const [key, label, hint, tip] of SETTINGS) {
-      const id = info.settings[key];
-      const st = this._state(id);
+      const gid = info.settings[key];
+      const st = this._state(gid);
       const a = (st && st.attributes) || {};
       const row = document.createElement("div");
       row.className = "row";
-      row.setAttribute("data-tip", `${tip} This is the default for every light; a light can set its own in the table below.`);
       row.innerHTML = `<label>${esc(label)}</label>
         <input type="range" min="${a.min ?? 0}" max="${a.max ?? 100}" step="${a.step ?? 1}">
         <input type="number" min="${a.min ?? 0}" max="${a.max ?? 100}" step="${a.step ?? 1}">
-        <span class="sub">${esc(hint)}${a.unit_of_measurement ? " (" + esc(a.unit_of_measurement) + ")" : ""}</span>`;
+        <span class="sub">${esc(hint)}${a.unit_of_measurement ? " (" + esc(a.unit_of_measurement) + ")" : ""}<button class="lnk" hidden>Use default</button></span>`;
       const [range, num] = row.querySelectorAll("input");
+      const lnk = row.querySelector(".lnk");
       range.addEventListener("input", () => {
         num.value = range.value;
-        this._edit(id, parseFloat(range.value));
+        this._edit(this._rowId(key), parseFloat(range.value));
       });
       num.addEventListener("change", () => {
         const v = clamp(parseFloat(num.value), parseFloat(num.min), parseFloat(num.max));
-        if (Number.isFinite(v)) this._edit(id, v);
-        else num.value = this._num(id, "");
+        if (Number.isFinite(v)) this._edit(this._rowId(key), v);
+        else this._update();
       });
+      lnk.addEventListener("click", () => this._edit(this._rowId(key), null));
       box.appendChild(row);
-      this._rows[key] = { id, range, num };
+      this._rows[key] = { gid, range, num, row, lnk, tip, zero: key === "normal_pct" || key === "floor_pct" };
     }
+    this._zeroIds = new Set(info.lights.flatMap((l) => [l.high, l.low]));
+    root.getElementById("setAll").addEventListener("click", () => {
+      this._sel = null;
+      this._markSel();
+      this._update();
+    });
 
     // lights table
     const table = root.getElementById("lights");
@@ -421,8 +452,8 @@ class DuskyPanel extends HTMLElement {
       tr.querySelector("td").setAttribute("data-tip", "Click to see this light's own curve on the graph.");
       tr.querySelector("td").addEventListener("click", () => {
         this._sel = this._sel === l.light ? null : l.light;
-        this._drawGraph();
         this._markSel();
+        this._update();
       });
       const wire = (cls, id) => {
         const inp = tr.querySelector(cls);
@@ -545,7 +576,12 @@ class DuskyPanel extends HTMLElement {
     const settings = {};
     for (const key in s) settings[key] = this._num(s[key]);
     const lt = this._info.lights.find((l) => l.light === light);
-    return { settings, overrides: { normal: this._num(lt.high, 0), floor: this._num(lt.low, 0) } };
+    const overrides = { normal: this._num(lt.high, 0), floor: this._num(lt.low, 0) };
+    for (const key of ["start_elevation", "end_elevation", "sharp_start", "sharp_end"]) {
+      const v = this._num(lt[key], NaN);
+      overrides[key] = Number.isFinite(v) ? v : null; // null = follow the shared value
+    }
+    return { settings, overrides };
   }
   async _toggleDemo() {
     try {
@@ -581,7 +617,12 @@ class DuskyPanel extends HTMLElement {
     for (const id of Object.keys(this._draft)) {
       const st = this._state(id);
       const v = st ? parseFloat(st.state) : NaN;
-      if (Number.isFinite(v) && Math.abs(v - this._draft[id]) < 1e-9) delete this._draft[id];
+      const d = this._draft[id];
+      const same =
+        d === null
+          ? !Number.isFinite(v) || (this._zeroIds.has(id) && v === 0)
+          : Number.isFinite(v) && Math.abs(v - d) < 1e-9;
+      if (same) delete this._draft[id];
     }
     const dirty = this._dirtyIds().length;
     {
@@ -602,13 +643,29 @@ class DuskyPanel extends HTMLElement {
     root.getElementById("save").disabled = !dirty || this._saving;
     root.getElementById("discard").disabled = !dirty || this._saving;
 
+    const sel = this._info.lights.find((l) => l.light === this._sel);
     for (const key in this._rows) {
-      const { id, range, num } = this._rows[key];
-      const v = this._num(id);
+      const r = this._rows[key];
+      let v = this._num(this._rowId(key));
+      let inherited = false;
+      if (sel && (!Number.isFinite(v) || (r.zero && v === 0))) {
+        v = this._num(r.gid); // this light has no value of its own: show the default
+        inherited = true;
+      }
+      r.row.classList.toggle("inh", inherited);
+      r.lnk.hidden = !sel || inherited;
+      r.row.setAttribute("data-tip", sel
+        ? `${r.tip} Applies only to ${sel.name}. "Use default" goes back to the shared value.`
+        : `${r.tip} This is the default for every light. To set it for just one, click that light's name below.`);
       if (!Number.isFinite(v)) continue;
-      if (active !== range) range.value = v;
-      if (active !== num) num.value = v;
+      if (active !== r.range) r.range.value = v;
+      if (active !== r.num) r.num.value = v;
     }
+    root.getElementById("setTitle").textContent = sel ? `Settings: ${sel.name}` : "Settings";
+    root.getElementById("setAll").hidden = !sel;
+    root.getElementById("setNote").textContent = sel
+      ? `Only for ${sel.name}. Grey values follow the shared default; change one to give this light its own.`
+      : "These apply to every light unless it has its own. Click a light's name below to set just that one.";
 
     const g = this._params();
     for (const r of this._lightRows) {
@@ -671,14 +728,17 @@ class DuskyPanel extends HTMLElement {
     if (!this._info) return;
     const info = this._info, g = this._params();
     const lights = info.lights.map((l) => this._lightParams(l, g));
-    let yMax = Math.max(g.high, ...lights.map((p) => p.high), 20);
+    const yMax = Math.max(g.high, ...lights.map((p) => p.high), 20);
     const tgt = {
       ...g,
-      xMax: Math.max(g.start + 14, 25),
-      xMin: Math.min(g.end - 8, -14),
+      xMax: Math.max(Math.max(g.start, ...lights.map((p) => p.start)) + 14, 25),
+      xMin: Math.min(Math.min(g.end, ...lights.map((p) => p.end)) - 8, -14),
       yMax: Math.min(100, Math.ceil((yMax + 8) / 10) * 10),
     };
-    lights.forEach((p, i) => { tgt["h" + i] = p.high; tgt["l" + i] = p.low; });
+    lights.forEach((p, i) => {
+      tgt["s" + i] = p.start; tgt["e" + i] = p.end; tgt["h" + i] = p.high;
+      tgt["l" + i] = p.low; tgt["a" + i] = p.sharpStart; tgt["b" + i] = p.sharpEnd;
+    });
     this._tgt = tgt;
     const same = this._cur && Object.keys(tgt).length === Object.keys(this._cur).length && Object.keys(tgt).every((k) => k in this._cur);
     const calm = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -718,9 +778,9 @@ class DuskyPanel extends HTMLElement {
     this._raf = requestAnimationFrame(step);
   }
 
-  _lp(light) {
+  _lp(light, m = this._cur) {
     const i = this._info.lights.indexOf(light);
-    return { ...this._cur, high: this._cur["h" + i], low: this._cur["l" + i] };
+    return { start: m["s" + i], end: m["e" + i], high: m["h" + i], low: m["l" + i], sharpStart: m["a" + i], sharpEnd: m["b" + i] };
   }
 
   _paint() {
@@ -733,6 +793,8 @@ class DuskyPanel extends HTMLElement {
     const H = Math.round(clamp(W * 0.58, 250, 460));
     const L = 44, R = 14, T = 18, B = 58;
     const { xMax, xMin, yMax } = g;
+    const ep = sel ? this._lp(sel) : g; // the curve being looked at
+    const Gs = sel ? this._lp(sel, G) : G;
     const X = (e) => L + ((xMax - e) / (xMax - xMin)) * (W - L - R);
     const Y = (p) => T + (1 - p / yMax) * (H - T - B);
     const path = (params) => {
@@ -746,12 +808,12 @@ class DuskyPanel extends HTMLElement {
 
     const o = [];
     // ramp window shading
-    o.push(`<rect x="${X(g.start).toFixed(1)}" y="${T}" width="${Math.max(0, X(g.end) - X(g.start)).toFixed(1)}" height="${H - T - B}" fill="${AMBER}" opacity=".12"/>`);
+    o.push(`<rect x="${X(ep.start).toFixed(1)}" y="${T}" width="${Math.max(0, X(ep.end) - X(ep.start)).toFixed(1)}" height="${H - T - B}" fill="${AMBER}" opacity=".12"/>`);
     for (let p = 0; p <= G.yMax; p += G.yMax > 60 ? 20 : 10) {
       if (Y(p) < T - 1) continue;
       o.push(`<line class="grid" x1="${L}" x2="${W - R}" y1="${Y(p)}" y2="${Y(p)}"/><text class="axis" x="${L - 8}" y="${Y(p) + 4}" text-anchor="end">${p}%</text>`);
     }
-    const ticks = new Set([Math.round(G.xMax / 10) * 10, 10, 0, -6, -12, Math.round(G.start), Math.round(G.end)].filter((e) => e <= xMax && e >= xMin));
+    const ticks = new Set([Math.round(G.xMax / 10) * 10, 10, 0, -6, -12, Math.round(Gs.start), Math.round(Gs.end)].filter((e) => e <= xMax && e >= xMin));
     for (const e of ticks) {
       o.push(`<line class="grid" x1="${X(e)}" x2="${X(e)}" y1="${T}" y2="${H - B}" stroke-dasharray="2 4"/><text class="axis" x="${X(e)}" y="${H - B + 18}" text-anchor="middle">${e}°</text>`);
     }
@@ -784,13 +846,13 @@ class DuskyPanel extends HTMLElement {
     info.lights.forEach((l, i) => {
       const lp = this._lp(l);
       const mine = sel && l === sel;
-      if (mine || (!sel && (lp.high !== g.high || lp.low !== g.low))) {
+      const differs = ["start", "end", "high", "low", "sharpStart", "sharpEnd"].some((k) => Math.abs(lp[k] - g[k]) > 1e-6);
+      if (mine || (!sel && differs)) {
         o.push(`<path d="${path(lp)}" fill="none" stroke="${SERIES[i % SERIES.length]}" stroke-width="${mine ? 4 : 2}" ${mine ? 'stroke-linecap="round"' : 'stroke-dasharray="6 4"'} opacity=".95"/>`);
       }
     });
     o.push(`<path d="${path(g)}" fill="none" stroke="${AMBER}" stroke-width="${sel ? 2 : 4}" stroke-linecap="round" ${sel ? 'stroke-dasharray="5 4" opacity=".7"' : ""}/>`);
-    const ep = sel ? this._lp(sel) : g;
-    o.push(`<circle cx="${X(g.start)}" cy="${Y(ep.high)}" r="5" fill="${AMBER}"/><circle cx="${X(g.end)}" cy="${Y(Math.min(ep.low, ep.high))}" r="5" fill="#d9567a"/>`);
+    o.push(`<circle cx="${X(ep.start)}" cy="${Y(ep.high)}" r="5" fill="${AMBER}"/><circle cx="${X(ep.end)}" cy="${Y(Math.min(ep.low, ep.high))}" r="5" fill="#d9567a"/>`);
 
     // live sun and each light's target
     const demoLight = info.lights.find((l) => {
@@ -812,8 +874,8 @@ class DuskyPanel extends HTMLElement {
         }
       });
     }
-    const d0 = this._crossing(G.start, true), d1 = this._crossing(G.end, true);
-    const r0 = this._crossing(G.end, false), r1 = this._crossing(G.start, false);
+    const d0 = this._crossing(Gs.start, true), d1 = this._crossing(Gs.end, true);
+    const r0 = this._crossing(Gs.end, false), r1 = this._crossing(Gs.start, false);
     const span = (a, b) => (a != null && b != null ? `${this._clock(a)} to ${this._clock(b)}` : null);
     const dusk = span(d0, d1), dawn = span(r0, r1);
     this.shadowRoot.getElementById("times").textContent = !this._sun
@@ -828,10 +890,10 @@ class DuskyPanel extends HTMLElement {
       (sel
         ? `<span><b>${esc(sel.name)}</b>: Day ${fmt(this._lightParams(sel, G).high, 0)}%, Night ${fmt(this._lightParams(sel, G).low, 0)}% (dashed = global)</span>`
         : `<span class="sub">Click a light's name below to see just its curve.</span>`) +
-      `<span><span class="dot" style="background:${AMBER}"></span>global curve</span>` +
-      `<span data-tip="A rough estimate of outdoor daylight on a clear day, stretched to fill the graph. It shows the shape of the day, not real amounts."><span class="dot" style="background:var(--secondary-text-color,#888);opacity:.5"></span>daylight (rough)</span>` +
+      `<span data-tip="The schedule every light follows, unless it has its own settings."><span class="dot" style="background:${AMBER}"></span>global curve</span>` +
+      `<span data-tip="A rough estimate of clear-sky daylight outside: the Haurwitz model above the horizon, fading out through twilight. It is stretched to fill the graph, so it shows the shape of the day, not real amounts."><span class="dot" style="background:var(--secondary-text-color,#888);opacity:.5"></span>daylight (rough)</span>` +
       info.lights
-        .map((l, i) => `<span><span class="dot" style="background:${SERIES[i % SERIES.length]}"></span>${esc(l.name)}</span>`)
+        .map((l, i) => `<span data-tip="${esc(l.name)}: drawn dashed where it differs from the global curve. Click its name in the table to edit just this light."><span class="dot" style="background:${SERIES[i % SERIES.length]}"></span>${esc(l.name)}</span>`)
         .join("");
   }
 }

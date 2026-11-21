@@ -38,6 +38,7 @@ if (q.get("mode") === "lux") {
     "number.dusky_living_low": num(0, 0, 100, 1, "%"),
     "number.dusky_kitchen_high": num(70, 0, 100, 1, "%"),
     "number.dusky_kitchen_low": num(20, 0, 100, 1, "%"),
+    ...Object.fromEntries(["living", "kitchen"].flatMap((n) => ["start_elevation", "end_elevation", "start_sharpness", "end_sharpness"].map((k) => ["number.dusky_" + n + "_" + k, { state: "unknown", attributes: {} }]))),
     "sensor.dusky_sun_elevation": { state: q.get("elev") || "3.2", attributes: {} },
     "sensor.dusky_living_target": { state: "29.4", attributes: { holding: false, demo: false } },
     "sensor.dusky_kitchen_target": { state: "42.8", attributes: { holding: true, hold_brightness: 90, demo: false } },
@@ -48,12 +49,14 @@ if (q.get("mode") === "lux") {
     "select.dusky_demo_repeat": { state: "Once", attributes: { options: ["Once", "Loop"] } },
     "number.dusky_demo_length": num(0, 0, 600, 1, "s"),
   };
+  states["number.dusky_kitchen_start_elevation"] = { state: "18", attributes: {} };   // kitchen has its own start
+  const pl = (n) => ({ start_elevation: `number.dusky_${n}_start_elevation`, end_elevation: `number.dusky_${n}_end_elevation`, sharp_start: `number.dusky_${n}_start_sharpness`, sharp_end: `number.dusky_${n}_end_sharpness` });
   const info = {
     settings: { start_elevation: "number.dusky_start_elevation", end_elevation: "number.dusky_end_elevation", normal_pct: "number.dusky_high",
       floor_pct: "number.dusky_low", sharp_start: "number.dusky_start_sharpness", sharp_end: "number.dusky_end_sharpness" },
     lights: [
-      { light: "light.living", name: "Living lights", high: "number.dusky_living_high", low: "number.dusky_living_low", release: "button.dusky_living_release", target: "sensor.dusky_living_target" },
-      { light: "light.kitchen", name: "Kitchen lights", high: "number.dusky_kitchen_high", low: "number.dusky_kitchen_low", release: "button.dusky_kitchen_release", target: "sensor.dusky_kitchen_target" },
+      { light: "light.living", name: "Living lights", high: "number.dusky_living_high", low: "number.dusky_living_low", release: "button.dusky_living_release", target: "sensor.dusky_living_target", ...pl("living") },
+      { light: "light.kitchen", name: "Kitchen lights", high: "number.dusky_kitchen_high", low: "number.dusky_kitchen_low", release: "button.dusky_kitchen_release", target: "sensor.dusky_kitchen_target", ...pl("kitchen") },
     ],
     candidates: [{ light: "light.garage", name: "Garage lights" }, { light: "light.office", name: "Office lights" }, { light: "light.porch", name: "Porch" }],
     release_all: "button.dusky_release_all", elevation: "sensor.dusky_sun_elevation",
@@ -155,6 +158,37 @@ if (q.get("mode") === "lux") {
     const live = !!el._raf; pump(160); const settled = d();
     const out = document.createElement("pre"); out.id = "out";
     out.textContent = JSON.stringify({ errors: window.__errs, start, t0, mid, end, settled, raf: live });
+    document.body.appendChild(out);
+  }
+  if (q.get("view")) {
+    await new Promise((r) => setTimeout(r, 200));
+    el.shadowRoot.querySelectorAll("#lights tbody tr td:first-child")[1].click();
+  }
+  if (q.get("perlight")) {
+    await new Promise((r) => setTimeout(r, 200));
+    const sr = el.shadowRoot, rows = () => el._rows;
+    const names = sr.querySelectorAll("#lights tbody tr td:first-child");
+    const before = { title: sr.getElementById("setTitle").textContent, setAll: sr.getElementById("setAll").hidden };
+    names[0].click();                                                       // living lights
+    const picked = { title: sr.getElementById("setTitle").textContent, setAll: sr.getElementById("setAll").hidden,
+      shows: rows().start_elevation.num.value, inherited: rows().start_elevation.row.classList.contains("inh"), lnkHidden: rows().start_elevation.lnk.hidden };
+    rows().start_elevation.num.value = "14"; rows().start_elevation.num.dispatchEvent(new Event("change"));
+    const mid = { draft: { ...el._draft }, dirty: sr.getElementById("dirty").textContent, inherited: rows().start_elevation.row.classList.contains("inh"), lnkHidden: rows().start_elevation.lnk.hidden };
+    sr.getElementById("dGo").click();                                       // preview must carry the light's own start
+    await new Promise((r) => setTimeout(r, 50));
+    const preview = (window.calls.find((c) => c[1] === "duskylights/demo") || [])[2];
+    sr.getElementById("save").click();
+    await new Promise((r) => setTimeout(r, 50));
+    names[1].click();                                                       // kitchen has its own start (18)
+    const kit = { shows: rows().start_elevation.num.value, inherited: rows().start_elevation.row.classList.contains("inh"), lnkHidden: rows().start_elevation.lnk.hidden };
+    rows().start_elevation.lnk.click();                                     // Use default
+    const afterReset = { draft: { ...el._draft } };
+    sr.getElementById("save").click();
+    await new Promise((r) => setTimeout(r, 50));
+    names[1].click();                                                       // click again: back to all lights
+    const back = { title: sr.getElementById("setTitle").textContent, setAll: sr.getElementById("setAll").hidden };
+    const out = document.createElement("pre"); out.id = "out";
+    out.textContent = JSON.stringify({ errors: window.__errs, before, picked, mid, preview, kit, afterReset, back, calls: window.calls });
     document.body.appendChild(out);
   }
   if (q.get("manage")) {

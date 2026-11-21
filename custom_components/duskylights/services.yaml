@@ -28,3 +28,8 @@ demo:
       selector:
         boolean:
 demo_stop:
+clear_override:
+  target:
+    entity:
+      integration: duskylights
+      domain: number

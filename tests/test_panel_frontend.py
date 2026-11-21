@@ -207,3 +207,42 @@ def test_daylight_reference_matches_haurwitz_above_and_decays_below_the_horizon(
         curve_
     )  # brighter as the sun climbs: no dip, no step down, in 0.1 degree steps
     assert got[1] == pytest.approx(3.4, rel=0.1)  # about 3 lux when civil twilight ends
+
+
+def test_clicking_a_light_makes_the_settings_edit_that_light():
+    r = out(dom(f"{HARNESS}?perlight=1"))
+    assert r["errors"] == []
+    assert r["before"] == {"title": "Settings", "setAll": True}
+    assert (
+        r["picked"]["title"] == "Settings: Living lights"
+        and r["picked"]["setAll"] is False
+    )
+    assert (
+        r["picked"]["inherited"] and r["picked"]["shows"] == "10"
+    )  # shows the shared value, greyed
+    assert r["picked"]["lnkHidden"] is True  # nothing to reset yet
+    assert r["mid"]["draft"] == {
+        "number.dusky_living_start_elevation": 14
+    }  # this light, not the global one
+    assert r["mid"]["inherited"] is False and r["mid"]["lnkHidden"] is False
+    assert (
+        r["preview"]["preview"]["overrides"]["start_elevation"] == 14
+    )  # the demo previews it
+    assert (
+        r["preview"]["preview"]["settings"]["start_elevation"] == 10
+    )  # global untouched
+    sets = {c[2]["entity_id"]: c[2]["value"] for c in r["calls"] if c[1] == "set_value"}
+    assert sets == {"number.dusky_living_start_elevation": 14}
+    assert (
+        r["kit"]["shows"] == "18"
+        and r["kit"]["inherited"] is False
+        and r["kit"]["lnkHidden"] is False
+    )
+    assert r["afterReset"]["draft"] == {"number.dusky_kitchen_start_elevation": None}
+    cleared = [
+        c[2]["entity_id"]
+        for c in r["calls"]
+        if c[0] == "duskylights" and c[1] == "clear_override"
+    ]
+    assert cleared == ["number.dusky_kitchen_start_elevation"]
+    assert r["back"] == {"title": "Settings", "setAll": True}
