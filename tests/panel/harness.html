@@ -45,6 +45,10 @@ if (q.get("mode") === "parity") {
     "select.dusky_demo_repeat": { state: "Once", attributes: { options: ["Once", "Loop"] } },
     "number.dusky_demo_length": num(0, 0, 600, 1, "s"),
   };
+  if (q.get("bad")) {   // settings saved in a state the rules forbid
+    states["number.dusky_start_elevation"].state = "0"; states["number.dusky_end_elevation"].state = "5";
+    states["number.dusky_low"].state = "60";
+  }
   const info = {
     settings: { start_elevation: "number.dusky_start_elevation", end_elevation: "number.dusky_end_elevation", normal_pct: "number.dusky_high",
       floor_pct: "number.dusky_low", sharp_start: "number.dusky_start_sharpness", sharp_end: "number.dusky_end_sharpness" },
@@ -209,6 +213,18 @@ if (q.get("mode") === "parity") {
     res.light = snap();
     const out = document.createElement("pre"); out.id = "out";
     out.textContent = JSON.stringify({ errors: window.__errs, ...res });
+    document.body.appendChild(out);
+  }
+  if (q.get("bad") && !q.get("keep")) {
+    await new Promise((r) => setTimeout(r, 200));
+    const sr = el.shadowRoot, warns = () => [...sr.querySelectorAll("#problems .warn")].map((w) => w.querySelector("span").textContent);
+    const before = warns(), dirtyBefore = sr.getElementById("save").disabled;
+    sr.querySelector("#problems .warn button").click();      // fix the first one
+    const afterFirst = { warns: warns(), draft: { ...el._draft } };
+    sr.querySelector("#problems .warn button").click();      // and the second
+    const afterSecond = { warns: warns(), draft: { ...el._draft }, saveDisabled: sr.getElementById("save").disabled };
+    const out = document.createElement("pre"); out.id = "out";
+    out.textContent = JSON.stringify({ errors: window.__errs, before, dirtyBefore, afterFirst, afterSecond, calls: window.calls });
     document.body.appendChild(out);
   }
   if (q.get("manage")) {

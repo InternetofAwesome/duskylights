@@ -118,6 +118,9 @@ tr.sel { background:color-mix(in srgb, var(--primary-color,#03a9f4) 12%, transpa
 .row.locked { opacity:.5; }
 .row.locked input { cursor:not-allowed; }
 .row.inh input[type=number] { color:var(--secondary-text-color,#888); font-style:italic; }
+.warn { display:flex; gap:10px; align-items:center; justify-content:space-between; margin:6px 0; padding:8px 12px; border-radius:8px; font-size:13px;
+  background:color-mix(in srgb, var(--warning-color,#ffa600) 20%, transparent); }
+.warn .lnk { white-space:nowrap; flex:none; margin:0; }
 .addrow { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:12px; }
 .addrow { align-items:flex-end; }
 .combo { position:relative; flex:1 1 260px; min-width:220px; }
@@ -308,6 +311,34 @@ class DuskyPanel extends HTMLElement {
     Object.assign(this._draft, this._constrain(id, value));
     this._update();
   }
+  // Saved values that break the same rules (set outside the panel, or before the rules existed).
+  // They are reported with a one-click fix that stages the change; nothing is saved until Save.
+  _problems() {
+    const S = this._info.settings, g = this._params(), out = [];
+    if (g.start <= g.end) {
+      out.push({
+        text: `Dimmest at (${fmt(g.end, 1)}\u00b0) is not below Dim starts at (${fmt(g.start, 1)}\u00b0), so the lights will never dim.`,
+        fix: () => this._constrain(S.start_elevation, g.start),
+      });
+    }
+    if (g.low > g.high) {
+      out.push({
+        text: `Night brightness (${fmt(g.low, 0)}%) is above Day brightness (${fmt(g.high, 0)}%), so the lights will not dim.`,
+        fix: () => this._constrain(S.normal_pct, g.high),
+      });
+    }
+    for (const l of this._info.lights) {
+      const p = this._lightParams(l, g);
+      const ownLow = this._num(l.low, 0) > 0, ownHigh = this._num(l.high, 0) > 0;
+      if (p.low > p.high && (ownLow || ownHigh)) { // a light that only inherits is covered by the shared warning
+        out.push({
+          text: `${l.name}: night brightness (${fmt(p.low, 0)}%) is above its day brightness (${fmt(p.high, 0)}%), so it will not dim.`,
+          fix: () => (ownLow ? { [l.low]: p.high } : { [l.high]: p.low }),
+        });
+      }
+    }
+    return out;
+  }
   // Keep pairs in a sensible order: dimming must end below where it starts, and Night cannot be
   // brighter than Day. The value being dragged pushes the other one along (like a two-handled range
   // slider); if the other is already at its limit, the dragged one stops instead.
@@ -398,7 +429,7 @@ class DuskyPanel extends HTMLElement {
       <main>
         <div class="two">
           <section class="card"><h2>Brightness follows the sun</h2><div id="graph"></div><div class="legend" id="legend"></div><p class="sub" id="times"></p></section>
-          <section class="card"><div class="sethead"><h2 id="setTitle">Settings</h2><button id="setAll" hidden data-tip="Go back to editing the settings every light shares">All lights</button></div><p class="sub" id="setNote"></p><div id="settings"></div></section>
+          <section class="card"><div class="sethead"><h2 id="setTitle">Settings</h2><button id="setAll" hidden data-tip="Go back to editing the settings every light shares">All lights</button></div><p class="sub" id="setNote"></p><div id="problems"></div><div id="settings"></div></section>
         </div>
         <section class="card"><h2>Lights</h2><div style="overflow-x:auto"><table id="lights"></table></div>
           <p style="margin:12px 0 0"><button id="releaseAll" data-tip="Cancel every manual dim so all lights follow the sun again">Resume all</button></p>
@@ -679,6 +710,23 @@ class DuskyPanel extends HTMLElement {
       if (!Number.isFinite(v)) continue;
       if (active !== r.range) r.range.value = v;
       if (active !== r.num) r.num.value = v;
+    }
+    const problems = this._problems();
+    const key = problems.map((p) => p.text).join("|");
+    if (key !== this._problemKey) {
+      this._problemKey = key;
+      const box = root.getElementById("problems");
+      box.innerHTML = "";
+      for (const pr of problems) {
+        const d = document.createElement("div");
+        d.className = "warn";
+        d.innerHTML = `<span>${esc(pr.text)}</span><button class="lnk" data-tip="Stage a correction. Nothing changes until you press Save.">Fix it</button>`;
+        d.querySelector("button").addEventListener("click", () => {
+          Object.assign(this._draft, pr.fix());
+          this._update();
+        });
+        box.appendChild(d);
+      }
     }
     root.getElementById("setTitle").textContent = sel ? `Settings: ${sel.name}` : "Settings";
     root.getElementById("setAll").hidden = !sel;

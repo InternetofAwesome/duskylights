@@ -261,3 +261,25 @@ def test_sliders_cannot_cross_each_other_and_push_the_other_along():
         "number.dusky_kitchen_low": 90,
         "number.dusky_kitchen_high": 90,
     }
+
+
+def test_saved_values_that_break_the_rules_are_flagged_and_fixed_with_one_click():
+    r = out(dom(f"{HARNESS}?bad=1"))
+    assert r["errors"] == []
+    assert len(r["before"]) == 2
+    assert "Dimmest at" in r["before"][0] and "never dim" in r["before"][0]
+    assert "Night brightness (60%)" in r["before"][1]
+    assert r["dirtyBefore"] is True  # looking at it does not change anything
+    # the fix is staged as a draft, not saved
+    assert r["afterFirst"]["draft"] == {
+        "number.dusky_end_elevation": -1
+    }  # End moves below the saved Start (0)
+    assert len(r["afterFirst"]["warns"]) == 1
+    assert r["afterSecond"]["warns"] == []
+    assert (
+        r["afterSecond"]["draft"]["number.dusky_low"] <= 50
+    )  # Night brought down to Day
+    assert r["afterSecond"]["saveDisabled"] is False
+    assert not [
+        c for c in r["calls"] if c[1] == "set_value"
+    ]  # nothing written until Save
