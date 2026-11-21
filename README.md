@@ -46,7 +46,8 @@ not yet been run against real lights. Treat it as pre-release.
 Admins get a **Dusky** page in the sidebar (and it is the integration's configure
 page where Home Assistant supports that). It shows the brightness curve for your
 settings, redrawn as you drag the sliders, with the sun's current elevation and
-each light's current target marked on it. Below the graph are the global
+each light's current target marked on it. Under the elevations are the clock times
+at which today's sun passes them, so you can see when dimming will start and end. Below the graph are the global
 settings, a table of lights (per-light high and low overrides, whether a light
 is holding a manual level, a Release button for each) and the demo controls.
 

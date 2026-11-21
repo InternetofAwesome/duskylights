@@ -5,6 +5,9 @@
 :root{--primary-color:#03a9f4;--app-header-background-color:#03a9f4}</style>
 <body>
 <script type="module">
+window.__errs = [];
+addEventListener("error", (e) => window.__errs.push(e.message));
+addEventListener("unhandledrejection", (e) => window.__errs.push(String(e.reason)));
 import { shape } from "../../custom_components/duskylights/frontend/dusky-panel.js";
 const q = new URLSearchParams(location.search);
 if (q.get("mode") === "parity") {
@@ -48,12 +51,27 @@ if (q.get("mode") === "parity") {
     release_all: "button.dusky_release_all", elevation: "sensor.dusky_sun_elevation",
     demo: { switch: "switch.dusky_demo", light: "select.dusky_demo_light", repeat: "select.dusky_demo_repeat", length: "number.dusky_demo_length" },
   };
+  if (q.get("unavail")) {
+    for (const id of ["number.dusky_high", "number.dusky_low", "number.dusky_start_sharpness", "sensor.dusky_living_target", "switch.dusky_demo", "light.living"])
+      states[id] = { state: "unavailable", attributes: {} };
+    states["sensor.dusky_sun_elevation"] = { state: "unknown", attributes: {} };
+  }
+  if (q.get("nolights")) info.lights = [];
+  // a day at a place where the sun peaks at 32 degrees: elev = 40 cos(2 pi (h - 12) / 24) - 8
+  const day0 = Date.UTC(2026, 5, 21);
+  const sunPath = () => ({
+    start: day0, step_s: 120,
+    elevations: Array.from({ length: 720 }, (_, i) => (q.get("polar") ? 30 : Math.round((40 * Math.cos((2 * Math.PI * (i / 30 - 12)) / 24) - 8) * 100) / 100)),
+  });
   const el = document.createElement("dusky-panel");
   window.calls = [];
   const hass = () => ({
+    config: { time_zone: "UTC" },
+    locale: { language: "en-GB", time_format: "24" },
     states: { ...states },
     callWS: async (m) => {
       if (m.type === "duskylights/info") return info;
+      if (m.type === "duskylights/sun_path") return sunPath();
       window.calls.push(["ws", m.type, m]);
       return null;
     },
@@ -83,7 +101,35 @@ if (q.get("mode") === "parity") {
     rows[1].querySelector(".rel").click();
     sr.getElementById("releaseAll").click();
     await new Promise((r) => setTimeout(r, 100));
-    const out = document.createElement("pre"); out.id = "out"; out.textContent = JSON.stringify({ calls: window.calls, beforeSave: window.beforeSave });
+    const out = document.createElement("pre"); out.id = "out"; out.textContent = JSON.stringify({ calls: window.calls, beforeSave: window.beforeSave, errors: window.__errs });
+    document.body.appendChild(out);
+  }
+  if (q.get("probe") || q.get("garbage")) {
+    await new Promise((r) => setTimeout(r, 300));
+    const sr = el.shadowRoot;
+    if (q.get("garbage") && el._rows) {
+      const r = el._rows;
+      const type = (inp, v) => { inp.value = v; inp.dispatchEvent(new Event("change")); };
+      type(r.normal_pct.num, "999");      // far above the maximum
+      type(r.floor_pct.num, "-5");        // below the minimum
+      type(r.end_elevation.num, "abc");   // not a number at all (a number box drops it to "")
+      type(r.start_elevation.num, "");    // empty
+      const rows = sr.querySelectorAll("#lights tbody tr");
+      type(rows[0].querySelector(".hi"), "250");
+      type(rows[0].querySelector(".lo"), "");   // cleared = back to global
+      sr.getElementById("save").click();
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    const out = document.createElement("pre"); out.id = "out";
+    out.textContent = JSON.stringify({
+      errors: window.__errs, calls: window.calls,
+      svg: [...sr.querySelectorAll("svg text")].map((t) => t.textContent),
+      times: (sr.getElementById("times") || {}).textContent,
+      note: (sr.getElementById("demoNote") || {}).textContent,
+      goDisabled: (sr.getElementById("dGo") || {}).disabled,
+      rendered: !!sr.querySelector("svg path"),
+      endBox: el._rows ? el._rows.end_elevation.num.value : null,
+    });
     document.body.appendChild(out);
   }
 }

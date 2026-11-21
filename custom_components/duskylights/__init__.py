@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from homeassistant.const import Platform
+from homeassistant.core import callback
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 
 from .const import DOMAIN
 from .controller import Controller
@@ -42,7 +46,28 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     return True
 
 
+_LIGHT_ID = re.compile(r"light\.[a-z0-9_]+")
+
+
+@callback
+def _prune_removed_lights(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Drop entities and devices of lights that were removed from the options."""
+    keep = set(entry.options["lights"])
+    ent_reg = er.async_get(hass)
+    for ent in er.async_entries_for_config_entry(ent_reg, entry.entry_id):
+        found = _LIGHT_ID.findall(ent.unique_id.removeprefix(entry.entry_id))
+        if found and not set(found) <= keep:
+            ent_reg.async_remove(ent.entity_id)
+    dev_reg = dr.async_get(hass)
+    for dev in dr.async_entries_for_config_entry(dev_reg, entry.entry_id):
+        for domain, ident in dev.identifiers:
+            light = ident.removeprefix(f"{entry.entry_id}_")
+            if domain == DOMAIN and light != ident and light not in keep:
+                dev_reg.async_remove_device(dev.id)
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: DuskyConfigEntry) -> bool:
+    _prune_removed_lights(hass, entry)
     controller = Controller(hass, entry.options["lights"])
     entry.runtime_data = controller
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)

@@ -12,9 +12,14 @@ from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from homeassistant.components.light import ATTR_BRIGHTNESS, ATTR_TRANSITION
-from homeassistant.const import ATTR_ENTITY_ID, STATE_ON
+from homeassistant.const import (
+    ATTR_ENTITY_ID,
+    STATE_ON,
+    STATE_UNAVAILABLE,
+    STATE_UNKNOWN,
+)
 from homeassistant.core import Context, HomeAssistant, callback
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers.event import async_call_later, async_track_state_change_event
 from homeassistant.util import dt as dt_util
 
@@ -95,6 +100,7 @@ class Controller:
 
     @callback
     def async_stop(self) -> None:
+        self.async_stop_demo()  # puts a demo light back before we go away
         if self._timer:
             self._timer()
             self._timer = None
@@ -377,6 +383,11 @@ class Controller:
         holds unsaved settings to try instead of the saved ones:
         {"settings": {key: value}, "overrides": {"normal": n, "floor": f}}.
         """
+        state = self.hass.states.get(light)
+        if state is None or state.state in (STATE_UNAVAILABLE, STATE_UNKNOWN):
+            raise ServiceValidationError(
+                f"{light} is unavailable, so it can't run a demo"
+            )
         self.async_stop_demo()
         self._demo_values, self._demo_ov = self._clean_preview(light, preview)
         cfg = self.hass.config
@@ -396,7 +407,6 @@ class Controller:
         )
         self.demo_light = light
         self.demo_engine = Engine(self._demo_target)
-        state = self.hass.states.get(light)
         # Start where the light is now (off: the dawn ramp) and move at once.
         cur = state.attributes.get(ATTR_BRIGHTNESS) if state else None
         level = cur * 100 / 255 if state and state.state == STATE_ON and cur else None

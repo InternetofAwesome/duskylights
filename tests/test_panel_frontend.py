@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import html
 import json
+import math
 import re
 import shutil
 import subprocess
@@ -77,3 +78,52 @@ def test_edits_are_a_draft_until_saved_and_the_demo_previews_them():
     assert sets == {"number.dusky_high": 55}  # discard dropped the rest
     pressed = [c[2]["entity_id"] for c in calls if c[0] == "button"]
     assert pressed == ["button.dusky_kitchen_release", "button.dusky_release_all"]
+
+
+def probe(**flags):
+    q = urllib.parse.urlencode({"probe": 1, **flags})
+    return out(dom(f"{HARNESS}?{q}"))
+
+
+def test_clock_times_match_the_suns_path_and_the_locale():
+    # fake sun: elevation = 40 cos(2 pi (h - 12) / 24) - 8, UTC, 24-hour clock.
+    # 10 degrees is reached (going down) when cos = 18/40 -> 16:13; -6 degrees
+    # when cos = 2/40 -> 17:48; the morning mirrors that around noon.
+    r = probe()
+    assert r["errors"] == []
+    assert "16:13" in r["svg"]
+    assert "Today's sun: dimming runs 16:13 to 17:48" in r["times"]
+    assert "brightening runs 6:11 to 7:46" in r["times"]
+
+
+def test_sun_that_never_crosses_the_elevations_is_explained_not_broken():
+    r = probe(polar=1)
+    assert r["errors"] == [] and r["rendered"]
+    assert not any(":" in t for t in r["svg"])  # no clock times drawn
+    assert "doesn't pass through both" in r["times"]
+
+
+def test_unavailable_entities_do_not_break_the_panel():
+    r = probe(unavail=1)
+    assert r["errors"] == [] and r["rendered"]
+    assert not any("NaN" in t for t in r["svg"])
+
+
+def test_no_lights_still_renders_and_the_demo_is_disabled():
+    r = probe(nolights=1)
+    assert r["errors"] == [] and r["rendered"]
+    assert r["goDisabled"] is True
+    assert "Add a light" in r["note"]
+
+
+def test_garbage_typed_into_the_fields_is_clamped_or_ignored():
+    r = out(dom(f"{HARNESS}?garbage=1"))
+    assert r["errors"] == []
+    sets = {c[2]["entity_id"]: c[2]["value"] for c in r["calls"] if c[1] == "set_value"}
+    assert sets["number.dusky_high"] == 100  # 999 clamped to the maximum
+    assert sets["number.dusky_low"] == 1  # -5 clamped to the minimum
+    assert sets["number.dusky_living_high"] == 100  # 250 clamped
+    assert "number.dusky_end_elevation" not in sets  # "abc" ignored
+    assert "number.dusky_start_elevation" not in sets  # empty ignored
+    assert not any(math.isnan(v) for v in sets.values())  # no NaN written
+    assert r["endBox"] != "abc"

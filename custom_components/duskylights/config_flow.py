@@ -18,8 +18,9 @@ from .const import CONF_LIGHTS, DOMAIN
 
 SCHEMA = vol.Schema(
     {
-        vol.Required(CONF_LIGHTS): EntitySelector(
-            EntitySelectorConfig(domain="light", multiple=True)
+        vol.Required(CONF_LIGHTS): vol.All(
+            EntitySelector(EntitySelectorConfig(domain="light", multiple=True)),
+            vol.Length(min=1),
         )
     }
 )

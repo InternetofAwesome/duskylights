@@ -9,15 +9,19 @@ entity does not break it.
 from __future__ import annotations
 
 import inspect
+from datetime import UTC, datetime, time, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import voluptuous as vol
+from astral import Observer
+from astral.sun import elevation as astral_elevation
 from homeassistant.components import frontend, panel_custom, websocket_api
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_registry as er
+from homeassistant.util import dt as dt_util
 
 from .const import (
     DOMAIN,
@@ -88,6 +92,37 @@ def ws_info(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
     connection.send_result(msg["id"], build_info(hass, entries[0]))
 
 
+SUN_STEP_S = 120
+
+
+def _day_path(hass: HomeAssistant) -> dict[str, Any]:
+    """Today's sun elevation every SUN_STEP_S seconds, local midnight to midnight."""
+    tz = dt_util.get_default_time_zone()
+    today = dt_util.now().date()
+    start = datetime.combine(today, time(), tzinfo=tz)
+    end = datetime.combine(today + timedelta(days=1), time(), tzinfo=tz)
+    observer = Observer(hass.config.latitude, hass.config.longitude)
+    t0 = int(start.timestamp())
+    t1 = int(end.timestamp())  # a day is 23 or 25 hours long on a clock change
+    samples = [
+        round(
+            astral_elevation(observer, datetime.fromtimestamp(t, UTC)),
+            2,
+        )
+        for t in range(t0, t1, SUN_STEP_S)
+    ]
+    return {"start": t0 * 1000, "step_s": SUN_STEP_S, "elevations": samples}
+
+
+@websocket_api.websocket_command({vol.Required("type"): f"{DOMAIN}/sun_path"})
+@websocket_api.require_admin
+@websocket_api.async_response
+async def ws_sun_path(hass: HomeAssistant, connection, msg: dict[str, Any]) -> None:
+    connection.send_result(
+        msg["id"], await hass.async_add_executor_job(_day_path, hass)
+    )
+
+
 PREVIEW = vol.Schema(
     {
         vol.Optional("settings"): {str: vol.Coerce(float)},
@@ -138,6 +173,7 @@ def async_setup_websocket(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_info)
     websocket_api.async_register_command(hass, ws_demo)
     websocket_api.async_register_command(hass, ws_demo_stop)
+    websocket_api.async_register_command(hass, ws_sun_path)
 
 
 async def async_register_panel(hass: HomeAssistant, version: str) -> None:

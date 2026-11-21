@@ -157,6 +157,7 @@ class DuskyPanel extends HTMLElement {
     this._loading = true;
     try {
       this._info = await this._hass.callWS({ type: "duskylights/info" });
+      await this._loadSun();
       this._error = null;
       this._build();
       this._update();
@@ -165,6 +166,47 @@ class DuskyPanel extends HTMLElement {
       this.shadowRoot.innerHTML = `<style>${STYLE}</style><div class="err">Could not load Dusky Lights: ${esc(this._error)}</div>`;
     } finally {
       this._loading = false;
+    }
+  }
+
+  async _loadSun() {
+    try {
+      this._sun = await this._hass.callWS({ type: "duskylights/sun_path" });
+    } catch (e) {
+      this._sun = null; // the graph still works, just without clock times
+    }
+  }
+  _sunEnd() {
+    const s = this._sun;
+    return s ? s.start + s.elevations.length * s.step_s * 1000 : Infinity;
+  }
+  // when today's sun crosses `elev` going down (evening) or up (morning); null if it never does
+  _crossing(elev, evening) {
+    const sun = this._sun;
+    if (!sun || !sun.elevations.length || !Number.isFinite(elev)) return null;
+    const e = sun.elevations;
+    let noon = 0;
+    for (let i = 1; i < e.length; i++) if (e[i] > e[noon]) noon = i;
+    if (e[noon] < elev) return null; // the sun doesn't get that high today
+    const at = (i, f) => sun.start + (i + f) * sun.step_s * 1000;
+    if (evening) {
+      for (let i = noon; i < e.length - 1; i++) if (e[i] >= elev && e[i + 1] < elev) return at(i, (e[i] - elev) / (e[i] - e[i + 1]));
+    } else {
+      for (let i = noon; i > 0; i--) if (e[i] >= elev && e[i - 1] < elev) return at(i - 1, (elev - e[i - 1]) / (e[i] - e[i - 1]));
+    }
+    return null; // the sun doesn't get that low today
+  }
+  _clock(ms) {
+    const h = this._hass;
+    const o = { hour: "numeric", minute: "2-digit" };
+    if (h.config && h.config.time_zone) o.timeZone = h.config.time_zone;
+    const tf = h.locale && h.locale.time_format;
+    if (tf === "12") o.hour12 = true;
+    else if (tf === "24") o.hour12 = false;
+    try {
+      return new Date(ms).toLocaleTimeString(h.locale && h.locale.language, o);
+    } catch (e) {
+      return new Date(ms).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
     }
   }
 
@@ -233,7 +275,7 @@ class DuskyPanel extends HTMLElement {
           <button id="discard">Discard</button><button id="save" class="fill">Save</button></div></header>
       <main>
         <div class="two">
-          <section class="card"><h2>Brightness follows the sun</h2><div id="graph"></div><div class="legend" id="legend"></div></section>
+          <section class="card"><h2>Brightness follows the sun</h2><div id="graph"></div><div class="legend" id="legend"></div><p class="sub" id="times"></p></section>
           <section class="card"><h2>Settings</h2><div id="settings"></div></section>
         </div>
         <section class="card"><h2>Lights</h2><div style="overflow-x:auto"><table id="lights"></table></div>
@@ -274,6 +316,7 @@ class DuskyPanel extends HTMLElement {
       num.addEventListener("change", () => {
         const v = clamp(parseFloat(num.value), parseFloat(num.min), parseFloat(num.max));
         if (Number.isFinite(v)) this._edit(id, v);
+        else num.value = this._num(id, "");
       });
       box.appendChild(row);
       this._rows[key] = { id, range, num };
@@ -375,6 +418,10 @@ class DuskyPanel extends HTMLElement {
     if (this._menu) this._menu.hass = this._hass;
     const active = this.shadowRoot.activeElement;
 
+    if (Date.now() > this._sunEnd() && !this._sunBusy) {
+      this._sunBusy = true;
+      this._loadSun().finally(() => (this._sunBusy = false));
+    }
     // a draft value that now equals the saved value is no longer a change
     for (const id of Object.keys(this._draft)) {
       const st = this._state(id);
@@ -434,8 +481,10 @@ class DuskyPanel extends HTMLElement {
     const lname = ((this._info.lights.find((l) => l.light === this._d.light) || {}).name) || "the light";
     this._demo.go.textContent = running ? "Stop demo" : dirty ? "Preview unsaved" : "Start demo";
     const sw = this._state(this._info.demo.switch);
-    this._demo.go.disabled = !sw || sw.state === "unavailable";
-    root.getElementById("demoNote").textContent = this._demoError
+    this._demo.go.disabled = !this._info.lights.length || !sw || sw.state === "unavailable";
+    root.getElementById("demoNote").textContent = !this._info.lights.length
+      ? "Add a light in the integration's options to run a demo."
+      : this._demoError
       ? "Could not start: " + this._demoError
       : dirty
         ? `Runs ${lname} with the unsaved values shown here. Nothing is saved until you press Save.`
@@ -451,7 +500,7 @@ class DuskyPanel extends HTMLElement {
     const box = this.shadowRoot.getElementById("graph");
     const W = clamp(Math.round(box.clientWidth || 720), 300, 900);
     const H = Math.round(clamp(W * 0.58, 250, 460));
-    const L = 44, R = 14, T = 18, B = 42;
+    const L = 44, R = 14, T = 18, B = 58;
     const xMax = Math.max(g.start + 14, 25);
     const xMin = Math.min(g.end - 8, -14);
     let yMax = Math.max(g.high, ...info.lights.map((l) => this._lightParams(l, g).high), 20);
@@ -475,9 +524,18 @@ class DuskyPanel extends HTMLElement {
     }
     const ticks = new Set([Math.round(xMax / 10) * 10, 10, 0, -6, -12, Math.round(g.start), Math.round(g.end)].filter((e) => e <= xMax && e >= xMin));
     for (const e of ticks) {
-      o.push(`<line class="grid" x1="${X(e)}" x2="${X(e)}" y1="${T}" y2="${H - B}" stroke-dasharray="2 4"/><text class="axis" x="${X(e)}" y="${H - B + 20}" text-anchor="middle">${e}°</text>`);
+      o.push(`<line class="grid" x1="${X(e)}" x2="${X(e)}" y1="${T}" y2="${H - B}" stroke-dasharray="2 4"/><text class="axis" x="${X(e)}" y="${H - B + 18}" text-anchor="middle">${e}°</text>`);
     }
-    o.push(`<text class="axis" x="${(L + W - R) / 2}" y="${H - 8}" text-anchor="middle">sun elevation (sinking toward dusk)</text>`);
+    // this evening's clock time for each elevation (skipped where labels would touch)
+    let lastX = -1e9;
+    for (const e of [...ticks].sort((p, q) => q - p)) {
+      const t = this._crossing(e, true);
+      if (t != null && Math.abs(X(e) - lastX) >= 46) {
+        o.push(`<text class="axis" x="${X(e)}" y="${H - B + 33}" text-anchor="middle">${esc(this._clock(t))}</text>`);
+        lastX = X(e);
+      }
+    }
+    o.push(`<text class="axis" x="${(L + W - R) / 2}" y="${H - 6}" text-anchor="middle">sun elevation, with this evening\u2019s clock times</text>`);
 
     // per-light curves where they differ from the global one
     info.lights.forEach((l, i) => {
@@ -508,6 +566,15 @@ class DuskyPanel extends HTMLElement {
         }
       });
     }
+    const d0 = this._crossing(g.start, true), d1 = this._crossing(g.end, true);
+    const r0 = this._crossing(g.end, false), r1 = this._crossing(g.start, false);
+    const span = (a, b) => (a != null && b != null ? `${this._clock(a)} to ${this._clock(b)}` : null);
+    const dusk = span(d0, d1), dawn = span(r0, r1);
+    this.shadowRoot.getElementById("times").textContent = !this._sun
+      ? ""
+      : dusk && dawn
+        ? `Today's sun: dimming runs ${dusk}; brightening runs ${dawn}.`
+        : "Today's sun doesn't pass through both of these elevations at your location, so the ramp doesn't complete today.";
     box.innerHTML =
       `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Brightness against sun elevation">${o.join("")}</svg>`;
 
