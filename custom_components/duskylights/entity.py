@@ -42,10 +42,14 @@ class DuskyEntity(Entity):
         self.controller = controller
         self.light = light
         name = light_name(controller.hass, light) if light else ""
-        hub = dr.async_get(controller.hass).async_get_device({(DOMAIN, entry_id)})
-        self._attr_device_info = device_info(
-            entry_id, light, name, hub.id if hub else None
+        # get_or_create is idempotent and works on every supported HA version
+        hub = dr.async_get(controller.hass).async_get_or_create(
+            config_entry_id=entry_id,
+            identifiers={(DOMAIN, entry_id)},
+            name="Dusky",
+            manufacturer="Dusky Lights",
         )
+        self._attr_device_info = device_info(entry_id, light, name, hub.id)
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
