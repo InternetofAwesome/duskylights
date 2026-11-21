@@ -88,6 +88,21 @@ live on the "Dusky" device: `number.dusky_high`, `number.dusky_low`,
     .venv/bin/python -m pytest -q
     ruff check . && ruff format --check .
 
+## Choosing a low level
+
+Dusky works in Home Assistant brightness percent. Some dimmers rescale that range
+or need a minimum level to light a bulb, and Dusky does not know about either.
+If your dimmer exposes a minimum, a maximum and a "strike" or "kick" level, keep
+**Low** at or above the strike level in Home Assistant terms:
+
+    (strike - min) / (max - min) x 100
+
+For example, a dimmer that maps 0-100 % onto 15-94 % and strikes bulbs at 25 %
+needs Low of at least (25 - 15) / (94 - 15) x 100 = 12.7 %. Use the per-light
+**Low** override for lights that differ. A turn-on from off at a level below the
+strike level will still flash at the strike level first; that is the dimmer's own
+behaviour and is not something Dusky controls.
+
 ## Demo mode
 
 Plays one compressed cycle of the real sun for today's date (or any `date`) on
