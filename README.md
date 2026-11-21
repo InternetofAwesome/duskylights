@@ -41,6 +41,26 @@
 harness (config flow, entities, curve, holds, release, overrides, demo) but has
 not yet been run against real lights. Treat it as pre-release.
 
+## The Dusky panel
+
+Admins get a **Dusky** page in the sidebar (and it is the integration's configure
+page where Home Assistant supports that). It shows the brightness curve for your
+settings, redrawn as you drag the sliders, with the sun's current elevation and
+each light's current target marked on it. Below the graph are the global
+settings, a table of lights (per-light high and low overrides, whether a light
+is holding a manual level, a Release button for each) and the demo controls.
+
+It reads and writes the integration's own entities, so everything on the panel
+also works from dashboards and automations.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/panel-dark.png">
+    <img src="assets/panel-light.png" alt="The Dusky panel: curve graph, settings, lights table and demo controls" width="820">
+  </picture>
+  <br><sub>Sample data.</sub>
+</p>
+
 ## Install (HACS)
 
 1. HACS → ⋮ → **Custom repositories** → add

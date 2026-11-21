@@ -1,0 +1,80 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Dusky panel harness</title>
+<style>body{margin:0;font-family:Roboto,sans-serif;background:#fafafa}
+:root{--primary-color:#03a9f4;--app-header-background-color:#03a9f4}</style>
+<body>
+<script type="module">
+import { shape } from "../../custom_components/duskylights/frontend/dusky-panel.js";
+const q = new URLSearchParams(location.search);
+if (q.get("mode") === "parity") {
+  const cases = JSON.parse(q.get("cases"));
+  document.body.innerHTML = '<pre id="out">' + JSON.stringify(cases.map(([x, a, b]) => shape(x, a, b))) + "</pre>";
+} else {
+  if (q.get("dark")) {
+    document.body.style.background = "#111";
+    Object.entries({ "--primary-background-color": "#111", "--card-background-color": "#1c1c1c", "--primary-text-color": "#e1e1e1",
+      "--secondary-text-color": "#9b9b9b", "--divider-color": "#3a3a3a" }).forEach(([k, v]) => document.documentElement.style.setProperty(k, v));
+  }
+  const num = (v, min, max, step, unit) => ({ state: String(v), attributes: { min, max, step, unit_of_measurement: unit } });
+  const states = {
+    "number.dusky_start_elevation": num(10, -20, 40, 0.5, "°"),
+    "number.dusky_end_elevation": num(-6, -30, 20, 0.5, "°"),
+    "number.dusky_high": num(50, 1, 100, 1, "%"),
+    "number.dusky_low": num(10, 1, 100, 1, "%"),
+    "number.dusky_start_sharpness": num(0, 0, 3, 0.1, null),
+    "number.dusky_end_sharpness": num(0, 0, 3, 0.1, null),
+    "number.dusky_living_high": num(0, 0, 100, 1, "%"),
+    "number.dusky_living_low": num(0, 0, 100, 1, "%"),
+    "number.dusky_kitchen_high": num(70, 0, 100, 1, "%"),
+    "number.dusky_kitchen_low": num(20, 0, 100, 1, "%"),
+    "sensor.dusky_sun_elevation": { state: q.get("elev") || "3.2", attributes: {} },
+    "sensor.dusky_living_target": { state: "29.4", attributes: { holding: false, demo: false } },
+    "sensor.dusky_kitchen_target": { state: "42.8", attributes: { holding: true, hold_brightness: 90, demo: false } },
+    "light.living": { state: "on", attributes: { brightness: 76, friendly_name: "Living lights" } },
+    "light.kitchen": { state: "on", attributes: { brightness: 90, friendly_name: "Kitchen lights" } },
+    "switch.dusky_demo": { state: "off", attributes: {} },
+    "select.dusky_demo_light": { state: "Living lights", attributes: { options: ["Living lights", "Kitchen lights"] } },
+    "select.dusky_demo_repeat": { state: "Once", attributes: { options: ["Once", "Loop"] } },
+    "number.dusky_demo_length": num(0, 0, 600, 1, "s"),
+  };
+  const info = {
+    settings: { start_elevation: "number.dusky_start_elevation", end_elevation: "number.dusky_end_elevation", normal_pct: "number.dusky_high",
+      floor_pct: "number.dusky_low", sharp_start: "number.dusky_start_sharpness", sharp_end: "number.dusky_end_sharpness" },
+    lights: [
+      { light: "light.living", name: "Living lights", high: "number.dusky_living_high", low: "number.dusky_living_low", release: "button.dusky_living_release", target: "sensor.dusky_living_target" },
+      { light: "light.kitchen", name: "Kitchen lights", high: "number.dusky_kitchen_high", low: "number.dusky_kitchen_low", release: "button.dusky_kitchen_release", target: "sensor.dusky_kitchen_target" },
+    ],
+    release_all: "button.dusky_release_all", elevation: "sensor.dusky_sun_elevation",
+    demo: { switch: "switch.dusky_demo", light: "select.dusky_demo_light", repeat: "select.dusky_demo_repeat", length: "number.dusky_demo_length" },
+  };
+  const el = document.createElement("dusky-panel");
+  window.calls = [];
+  const hass = () => ({
+    states: { ...states },
+    callWS: async (m) => (m.type === "duskylights/info" ? info : Promise.reject(new Error("unexpected " + m.type))),
+    callService: async (d, s, data) => {
+      window.calls.push([d, s, data]);
+      if (d === "number" && s === "set_value") states[data.entity_id] = { ...states[data.entity_id], state: String(data.value) };
+      el.hass = hass();
+    },
+  });
+  document.body.appendChild(el);
+  el.hass = hass();
+  window.panel = el;
+  if (q.get("act")) {
+    await new Promise((r) => setTimeout(r, 200));
+    const r = el._rows;
+    r.normal_pct.num.value = "60"; r.normal_pct.num.dispatchEvent(new Event("change"));
+    r.start_elevation.range.value = "12"; r.start_elevation.range.dispatchEvent(new Event("input")); r.start_elevation.range.dispatchEvent(new Event("change"));
+    const rows = el.shadowRoot.querySelectorAll("#lights tbody tr");
+    rows[0].querySelector(".hi").value = "65"; rows[0].querySelector(".hi").dispatchEvent(new Event("change"));
+    rows[1].querySelector(".rel").click();
+    el.shadowRoot.getElementById("releaseAll").click();
+    el.shadowRoot.getElementById("dGo").click();
+    await new Promise((r) => setTimeout(r, 100));
+    const out = document.createElement("pre"); out.id = "out"; out.textContent = JSON.stringify(window.calls);
+    document.body.appendChild(out);
+  }
+}
+</script>

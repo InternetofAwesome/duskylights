@@ -6,6 +6,9 @@
   ],
   "config_flow": true,
   "dependencies": [
+    "frontend",
+    "http",
+    "panel_custom",
     "sun"
   ],
   "documentation": "https://github.com/InternetofAwesome/duskylights",
