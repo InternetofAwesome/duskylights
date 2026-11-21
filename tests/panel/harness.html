@@ -240,6 +240,9 @@ if (q.get("mode") === "lux") {
       note: (sr.getElementById("demoNote") || {}).textContent,
       goDisabled: (sr.getElementById("dGo") || {}).disabled,
       rendered: !!sr.querySelector("svg path"),
+      twilight: [...sr.querySelectorAll("#graph g.twi")].map((g) => g.getAttribute("data-tip")),
+      day: (sr.querySelector("#graph path.daylight[fill=none]") || { getAttribute: () => "" }).getAttribute("d"),
+      lamp: (sr.querySelector("#graph path[stroke-width='4']") || { getAttribute: () => "" }).getAttribute("d"),
       endBox: el._rows ? el._rows.end_elevation.num.value : null,
     });
     document.body.appendChild(out);

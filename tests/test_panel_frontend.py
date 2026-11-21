@@ -241,3 +241,22 @@ def test_clicking_a_light_unlocks_only_its_brightness_and_locks_the_shared_setti
         r["living"]["high"]["inherited"] and r["living"]["high"]["shows"] == "50"
     )  # grey = follows shared
     assert r["back"]["title"] == "Settings" and r["back"]["start"]["disabled"] is False
+
+
+def test_daylight_curve_ends_match_the_lamp_range_and_twilight_dots_are_labelled():
+    r = probe()
+    assert r["errors"] == []
+    first = lambda d: d.split("L")[0].split(",")[1]
+    last = lambda d: d.split("L")[-1].split(",")[1]
+    assert first(r["day"]) == first(r["lamp"])  # left end = the Day level
+    assert last(r["day"]) == last(r["lamp"])  # right end = the Night level
+    names = [tip.split(" (")[0] for tip in r["twilight"]]
+    assert names == [
+        "Sunset",
+        "Civil twilight ends",
+        "Nautical twilight ends",
+        "Astronomical twilight ends",
+    ]
+    assert (
+        "17:48" in r["twilight"][1]
+    )  # civil twilight ends at today's -6 degree crossing
