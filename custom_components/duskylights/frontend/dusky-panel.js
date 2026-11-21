@@ -649,19 +649,75 @@ class DuskyPanel extends HTMLElement {
     for (const r of this._lightRows || []) r.tr.classList.toggle("sel", r.l.light === this._sel);
   }
 
+  // The graph does not jump when a setting changes: every number it draws with (curve shape, axis
+  // ranges, per-light levels) chases its target like a critically damped spring (what a well-tuned
+  // PID loop settles to): quick, no overshoot, about a quarter of a second.
   _drawGraph() {
+    if (!this._info) return;
+    const info = this._info, g = this._params();
+    const lights = info.lights.map((l) => this._lightParams(l, g));
+    let yMax = Math.max(g.high, ...lights.map((p) => p.high), 20);
+    const tgt = {
+      ...g,
+      xMax: Math.max(g.start + 14, 25),
+      xMin: Math.min(g.end - 8, -14),
+      yMax: Math.min(100, Math.ceil((yMax + 8) / 10) * 10),
+    };
+    lights.forEach((p, i) => { tgt["h" + i] = p.high; tgt["l" + i] = p.low; });
+    this._tgt = tgt;
+    const same = this._cur && Object.keys(tgt).length === Object.keys(this._cur).length && Object.keys(tgt).every((k) => k in this._cur);
+    const calm = typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (!same || calm) {
+      this._cur = { ...tgt };
+      this._vel = {};
+    } else if (Object.keys(tgt).some((k) => Math.abs(tgt[k] - this._cur[k]) > 1e-6)) {
+      this._animate();
+    }
+    this._paint();
+  }
+
+  _animate() {
+    if (this._raf) return;
+    let last = null;
+    const W = 22; // rad/s; critically damped, settles in about 0.26 s
+    const step = (now) => {
+      const dt = last == null ? 1 / 60 : Math.min(0.033, (now - last) / 1000);
+      last = now;
+      let moving = false;
+      for (const k of Object.keys(this._tgt)) {
+        const x = this._cur[k], v = this._vel[k] || 0, t = this._tgt[k];
+        const nv = v + (W * W * (t - x) - 2 * W * v) * dt;
+        let nx = x + nv * dt;
+        if (Math.abs(t - nx) < 1e-3 * Math.max(1, Math.abs(t)) && Math.abs(nv) < 1e-2) {
+          this._cur[k] = t;
+          this._vel[k] = 0;
+        } else {
+          this._cur[k] = nx;
+          this._vel[k] = nv;
+          moving = true;
+        }
+      }
+      this._paint();
+      this._raf = moving && this.isConnected ? requestAnimationFrame(step) : 0;
+    };
+    this._raf = requestAnimationFrame(step);
+  }
+
+  _lp(light) {
+    const i = this._info.lights.indexOf(light);
+    return { ...this._cur, high: this._cur["h" + i], low: this._cur["l" + i] };
+  }
+
+  _paint() {
     const info = this._info;
     if (this._sel && !info.lights.some((l) => l.light === this._sel)) this._sel = null;
     const sel = info.lights.find((l) => l.light === this._sel);
-    const g = this._params();
+    const G = this._tgt, g = this._cur; // G: where it is heading (for labels); g: what is on screen
     const box = this.shadowRoot.getElementById("graph");
     const W = clamp(Math.round(box.clientWidth || 720), 300, 900);
     const H = Math.round(clamp(W * 0.58, 250, 460));
     const L = 44, R = 14, T = 18, B = 58;
-    const xMax = Math.max(g.start + 14, 25);
-    const xMin = Math.min(g.end - 8, -14);
-    let yMax = Math.max(g.high, ...info.lights.map((l) => this._lightParams(l, g).high), 20);
-    yMax = Math.min(100, Math.ceil((yMax + 8) / 10) * 10);
+    const { xMax, xMin, yMax } = g;
     const X = (e) => L + ((xMax - e) / (xMax - xMin)) * (W - L - R);
     const Y = (p) => T + (1 - p / yMax) * (H - T - B);
     const path = (params) => {
@@ -676,10 +732,11 @@ class DuskyPanel extends HTMLElement {
     const o = [];
     // ramp window shading
     o.push(`<rect x="${X(g.start).toFixed(1)}" y="${T}" width="${Math.max(0, X(g.end) - X(g.start)).toFixed(1)}" height="${H - T - B}" fill="${AMBER}" opacity=".12"/>`);
-    for (let p = 0; p <= yMax; p += yMax > 60 ? 20 : 10) {
+    for (let p = 0; p <= G.yMax; p += G.yMax > 60 ? 20 : 10) {
+      if (Y(p) < T - 1) continue;
       o.push(`<line class="grid" x1="${L}" x2="${W - R}" y1="${Y(p)}" y2="${Y(p)}"/><text class="axis" x="${L - 8}" y="${Y(p) + 4}" text-anchor="end">${p}%</text>`);
     }
-    const ticks = new Set([Math.round(xMax / 10) * 10, 10, 0, -6, -12, Math.round(g.start), Math.round(g.end)].filter((e) => e <= xMax && e >= xMin));
+    const ticks = new Set([Math.round(G.xMax / 10) * 10, 10, 0, -6, -12, Math.round(G.start), Math.round(G.end)].filter((e) => e <= xMax && e >= xMin));
     for (const e of ticks) {
       o.push(`<line class="grid" x1="${X(e)}" x2="${X(e)}" y1="${T}" y2="${H - B}" stroke-dasharray="2 4"/><text class="axis" x="${X(e)}" y="${H - B + 18}" text-anchor="middle">${e}°</text>`);
     }
@@ -696,14 +753,14 @@ class DuskyPanel extends HTMLElement {
 
     // per-light curves: the picked light alone and bold, else every light that differs
     info.lights.forEach((l, i) => {
-      const lp = this._lightParams(l, g);
+      const lp = this._lp(l);
       const mine = sel && l === sel;
       if (mine || (!sel && (lp.high !== g.high || lp.low !== g.low))) {
         o.push(`<path d="${path(lp)}" fill="none" stroke="${SERIES[i % SERIES.length]}" stroke-width="${mine ? 4 : 2}" ${mine ? 'stroke-linecap="round"' : 'stroke-dasharray="6 4"'} opacity=".95"/>`);
       }
     });
     o.push(`<path d="${path(g)}" fill="none" stroke="${AMBER}" stroke-width="${sel ? 2 : 4}" stroke-linecap="round" ${sel ? 'stroke-dasharray="5 4" opacity=".7"' : ""}/>`);
-    const ep = sel ? this._lightParams(sel, g) : g;
+    const ep = sel ? this._lp(sel) : g;
     o.push(`<circle cx="${X(g.start)}" cy="${Y(ep.high)}" r="5" fill="${AMBER}"/><circle cx="${X(g.end)}" cy="${Y(Math.min(ep.low, ep.high))}" r="5" fill="#d9567a"/>`);
 
     // live sun and each light's target
@@ -726,8 +783,8 @@ class DuskyPanel extends HTMLElement {
         }
       });
     }
-    const d0 = this._crossing(g.start, true), d1 = this._crossing(g.end, true);
-    const r0 = this._crossing(g.end, false), r1 = this._crossing(g.start, false);
+    const d0 = this._crossing(G.start, true), d1 = this._crossing(G.end, true);
+    const r0 = this._crossing(G.end, false), r1 = this._crossing(G.start, false);
     const span = (a, b) => (a != null && b != null ? `${this._clock(a)} to ${this._clock(b)}` : null);
     const dusk = span(d0, d1), dawn = span(r0, r1);
     this.shadowRoot.getElementById("times").textContent = !this._sun
@@ -740,7 +797,7 @@ class DuskyPanel extends HTMLElement {
 
     this.shadowRoot.getElementById("legend").innerHTML =
       (sel
-        ? `<span><b>${esc(sel.name)}</b>: High ${fmt(this._lightParams(sel, g).high, 0)}%, Low ${fmt(this._lightParams(sel, g).low, 0)}% (dashed = global)</span>`
+        ? `<span><b>${esc(sel.name)}</b>: Day ${fmt(this._lightParams(sel, G).high, 0)}%, Night ${fmt(this._lightParams(sel, G).low, 0)}% (dashed = global)</span>`
         : `<span class="sub">Click a light's name below to see just its curve.</span>`) +
       `<span><span class="dot" style="background:${AMBER}"></span>global curve</span>` +
       info.lights

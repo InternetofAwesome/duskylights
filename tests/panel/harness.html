@@ -10,6 +10,10 @@ addEventListener("error", (e) => window.__errs.push(e.message));
 addEventListener("unhandledrejection", (e) => window.__errs.push(String(e.reason)));
 import { shape } from "../../custom_components/duskylights/frontend/dusky-panel.js";
 const q = new URLSearchParams(location.search);
+const frames = [];
+if (q.get("anim") || q.get("select")) window.requestAnimationFrame = (cb) => (frames.push(cb), frames.length);  // the test turns the crank itself
+let clock = 0;
+const pump = (ms) => { for (let t = 0; t < ms; t += 16) { clock += 16; const run = frames.splice(0); run.forEach((cb) => cb(clock)); } };
 if (q.get("mode") === "parity") {
   const cases = JSON.parse(q.get("cases"));
   document.body.innerHTML = '<pre id="out">' + JSON.stringify(cases.map(([x, a, b]) => shape(x, a, b))) + "</pre>";
@@ -113,6 +117,7 @@ if (q.get("mode") === "parity") {
     const picked = snap(), legend = sr.getElementById("legend").textContent;
     const hi = sr.querySelector("#lights tbody tr .hi");
     hi.value = "90"; hi.dispatchEvent(new Event("change"));           // edit its High: the chart must move
+    pump(1200);                                                         // ...smoothly, so give it time to land
     const edited = snap(), legend2 = sr.getElementById("legend").textContent;
     sr.querySelectorAll("#lights tbody tr td")[0].click();            // click again: back to all lights
     const out = document.createElement("pre"); out.id = "out";
@@ -137,6 +142,17 @@ if (q.get("mode") === "parity") {
     const inp = el.shadowRoot.getElementById("addIn");
     inp.focus(); inp.value = "li"; inp.dispatchEvent(new Event("input"));
     inp.scrollIntoView({ block: "center" });
+  }
+  if (q.get("anim")) {
+    await new Promise((r) => setTimeout(r, 200));
+    const sr = el.shadowRoot, d = () => sr.querySelector("#graph svg path[stroke-width='4']").getAttribute("d");
+    const start = d();
+    const r = el._rows; r.normal_pct.num.value = "90"; r.normal_pct.num.dispatchEvent(new Event("change"));
+    const t0 = d(); pump(64); const mid = d(); pump(1200); const end = d();
+    const live = !!el._raf; pump(160); const settled = d();
+    const out = document.createElement("pre"); out.id = "out";
+    out.textContent = JSON.stringify({ errors: window.__errs, start, t0, mid, end, settled, raf: live });
+    document.body.appendChild(out);
   }
   if (q.get("manage")) {
     await new Promise((r) => setTimeout(r, 200));

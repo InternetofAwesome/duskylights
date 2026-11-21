@@ -154,8 +154,8 @@ def test_picking_a_light_shows_its_own_curve_and_editing_it_moves_the_chart():
     assert r["errors"] == []
     assert r["picked"] != r["before"]  # now showing that light's curve
     assert r["edited"] != r["picked"]  # typing a new High redraws it live
-    assert "Living lights" in r["legend"] and "High 50%" in r["legend"]
-    assert "High 90%" in r["legend2"]
+    assert "Living lights" in r["legend"] and "Day 50%" in r["legend"]
+    assert "Day 90%" in r["legend2"]
     assert r["back"] != r["edited"] and r["sel"] is None  # second click = all lights
 
 
@@ -166,3 +166,16 @@ def test_tooltips_are_our_own_delayed_and_explain_the_default():
     assert "default (50%)" in r["text"]
     assert r["w"] < 420  # wraps rather than running across the page
     assert r["native"] == 0  # no browser-styled title tooltips left
+
+
+def test_the_graph_glides_to_new_values_instead_of_jumping():
+    r = out(dom(f"{HARNESS}?anim=1"))
+    assert r["errors"] == []
+    assert r["t0"] == r["start"]  # nothing has jumped the instant you change a value
+    assert (
+        r["mid"] != r["start"] and r["mid"] != r["end"]
+    )  # partway there a moment later
+    assert r["end"] != r["start"]
+    assert (
+        r["settled"] == r["end"] and r["raf"] is False
+    )  # it lands and stops redrawing
