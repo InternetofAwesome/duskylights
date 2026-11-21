@@ -28,6 +28,16 @@ so far (`custom_components/duskylights/curve.py`, with tests).
     python3 -m unittest discover -s tests -v
     ruff check . && ruff format --check .
 
+## Demo mode
+
+`duskylights.demo` (service) runs a virtual 24 hours of the *real sun for the
+chosen date* (default today, so it matches the time of year) over any real
+duration, e.g. 10 minutes. Options: `duration` (real minutes for the full day),
+`date`, `start_hour` (default 12: dusk, night, then dawn), `loop`, and an
+optional list of lights. While it runs, the controller ticks every fraction of a
+second so steps stay small, then it returns to the live sun. Stop it with
+`duskylights.demo_stop`.
+
 ## License
 
 [PolyForm Noncommercial 1.0.0](LICENSE). Free to use, modify and share for any

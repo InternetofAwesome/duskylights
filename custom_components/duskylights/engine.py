@@ -53,6 +53,7 @@ class Engine:
         self._target_pct = target_pct
         self.holds: dict[str, _Hold] = {}
         self._last_set: dict[str, tuple[int, float]] = {}  # light -> (bri, time)
+        self._last_target: dict[str, int] = {}
         self._was_dawn = False
 
     # ---- helpers -------------------------------------------------------
@@ -109,6 +110,7 @@ class Engine:
     def release(self, light: str) -> None:
         self.holds.pop(light, None)
         self._last_set.pop(light, None)
+        self._last_target.pop(light, None)
 
     # ---- time ----------------------------------------------------------
     def tick(
@@ -134,7 +136,18 @@ class Engine:
                 hold = None
             if hold:
                 continue
+            settled = self._last_target.get(light) == target
+            self._last_target[light] = target
             if current is not None and abs(current - target) < APPLY_DELTA:
-                continue
+                # Close enough while ramping. Once the target stops moving (floor,
+                # normal), send one final exact value; never resend the same one,
+                # so a dimmer that reports quantized values can't make us loop.
+                ours = self._last_set.get(light)
+                if not (
+                    settled
+                    and current != target
+                    and (ours is None or ours[0] != target)
+                ):
+                    continue
             actions.append(self._set(light, target, now))
         return actions

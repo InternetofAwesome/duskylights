@@ -115,6 +115,13 @@ class EngineTests(Fixture):
         acts = self.tick({"a": (True, 128), "b": (True, 128)})
         self.assertEqual(acts, [Action("b", 51)])
 
+    def test_final_snap_to_a_settled_target_once(self):
+        states = {"a": (True, 126)}  # 2 off: under the chase threshold
+        self.assertEqual(self.tick(states), [])  # target just appeared: wait
+        self.assertEqual(self.tick(states), [Action("a", 128)])  # settled: snap
+        # the dimmer reports something quantized; we must not resend 128 forever
+        self.assertEqual(self.tick({"a": (True, 126)}), [])
+
     def test_off_light_is_never_commanded(self):
         self.assertEqual(self.tick({"a": (False, None)}), [])
 
