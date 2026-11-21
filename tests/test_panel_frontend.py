@@ -209,40 +209,35 @@ def test_daylight_reference_matches_haurwitz_above_and_decays_below_the_horizon(
     assert got[1] == pytest.approx(3.4, rel=0.1)  # about 3 lux when civil twilight ends
 
 
-def test_clicking_a_light_makes_the_settings_edit_that_light():
+def test_clicking_a_light_unlocks_only_its_brightness_and_locks_the_shared_settings():
     r = out(dom(f"{HARNESS}?perlight=1"))
     assert r["errors"] == []
-    assert r["before"] == {"title": "Settings", "setAll": True}
+    assert r["before"]["title"] == "Settings" and r["before"]["setAll"] is True
+    assert r["before"]["start"]["disabled"] is False  # editing the shared settings
+    p = r["picked"]
+    assert p["title"] == "Settings: Kitchen lights" and p["setAll"] is False
+    assert p["start"]["disabled"] and p["sharp"]["disabled"]  # shared: greyed out
+    assert "shared by every light" in p["start"]["tip"]  # ...and it says why
     assert (
-        r["picked"]["title"] == "Settings: Living lights"
-        and r["picked"]["setAll"] is False
-    )
+        not p["high"]["disabled"] and not p["low"]["disabled"]
+    )  # brightness is the per-room part
     assert (
-        r["picked"]["inherited"] and r["picked"]["shows"] == "10"
-    )  # shows the shared value, greyed
-    assert r["picked"]["lnkHidden"] is True  # nothing to reset yet
+        p["high"]["shows"] == "70" and p["high"]["lnkHidden"] is False
+    )  # its own, so Use default is offered
     assert r["mid"]["draft"] == {
-        "number.dusky_living_start_elevation": 14
-    }  # this light, not the global one
-    assert r["mid"]["inherited"] is False and r["mid"]["lnkHidden"] is False
+        "number.dusky_kitchen_high": 85
+    }  # this light, not the shared one
+    assert r["reset"]["draft"] == {
+        "number.dusky_kitchen_high": 85,
+        "number.dusky_kitchen_low": 0,
+    }  # 0 = shared
+    assert r["preview"]["preview"]["overrides"] == {"normal": 85, "floor": 0}
     assert (
-        r["preview"]["preview"]["overrides"]["start_elevation"] == 14
-    )  # the demo previews it
-    assert (
-        r["preview"]["preview"]["settings"]["start_elevation"] == 10
-    )  # global untouched
+        r["preview"]["preview"]["settings"]["normal_pct"] == 50
+    )  # the shared value untouched
     sets = {c[2]["entity_id"]: c[2]["value"] for c in r["calls"] if c[1] == "set_value"}
-    assert sets == {"number.dusky_living_start_elevation": 14}
+    assert sets == {"number.dusky_kitchen_high": 85, "number.dusky_kitchen_low": 0}
     assert (
-        r["kit"]["shows"] == "18"
-        and r["kit"]["inherited"] is False
-        and r["kit"]["lnkHidden"] is False
-    )
-    assert r["afterReset"]["draft"] == {"number.dusky_kitchen_start_elevation": None}
-    cleared = [
-        c[2]["entity_id"]
-        for c in r["calls"]
-        if c[0] == "duskylights" and c[1] == "clear_override"
-    ]
-    assert cleared == ["number.dusky_kitchen_start_elevation"]
-    assert r["back"] == {"title": "Settings", "setAll": True}
+        r["living"]["high"]["inherited"] and r["living"]["high"]["shows"] == "50"
+    )  # grey = follows shared
+    assert r["back"]["title"] == "Settings" and r["back"]["start"]["disabled"] is False

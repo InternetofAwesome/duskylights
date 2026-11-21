@@ -4,9 +4,7 @@
       "user": {
         "title": "Dusky Lights",
         "description": "Choose the lights that should follow the sun.",
-        "data": {
-          "lights": "Lights"
-        }
+        "data": { "lights": "Lights" }
       }
     }
   },
@@ -14,9 +12,7 @@
     "step": {
       "init": {
         "title": "Dusky Lights",
-        "data": {
-          "lights": "Lights"
-        }
+        "data": { "lights": "Lights" }
       }
     }
   },
@@ -24,42 +20,21 @@
     "release": {
       "name": "Release to the curve",
       "description": "Drop manual holds so lights return to the sun-following curve.",
-      "fields": {
-        "entity_id": {
-          "name": "Lights",
-          "description": "Lights to release; all if empty."
-        }
-      }
+      "fields": { "entity_id": { "name": "Lights", "description": "Lights to release; all if empty." } }
     },
     "demo": {
       "name": "Demo",
       "description": "Run a virtual day of the real sun on one light.",
       "fields": {
-        "entity_id": {
-          "name": "Light",
-          "description": "The single light to run the demo on."
-        },
-        "seconds": {
-          "name": "Cycle length",
-          "description": "Real seconds for one dusk-and-dawn cycle. 0 picks the shortest cycle with steps of 1 % or less."
-        },
-        "date": {
-          "name": "Date",
-          "description": "Day whose sun path to use. Defaults to today."
-        },
-        "loop": {
-          "name": "Loop",
-          "description": "Repeat until stopped."
-        }
+        "entity_id": { "name": "Light", "description": "The single light to run the demo on." },
+        "seconds": { "name": "Cycle length", "description": "Real seconds for one dusk-and-dawn cycle. 0 picks the shortest cycle with steps of 1 % or less." },
+        "date": { "name": "Date", "description": "Day whose sun path to use. Defaults to today." },
+        "loop": { "name": "Loop", "description": "Repeat until stopped." }
       }
     },
     "demo_stop": {
       "name": "Stop demo",
       "description": "Stop the demo and return the light to the live sun."
-    },
-    "clear_override": {
-      "name": "Use default",
-      "description": "Put a per-light setting back to following the global value."
     }
   }
 }

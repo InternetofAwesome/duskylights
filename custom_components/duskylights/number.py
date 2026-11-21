@@ -6,9 +6,8 @@ from typing import TYPE_CHECKING
 
 from homeassistant.components.number import NumberMode, RestoreNumber
 from homeassistant.const import EntityCategory
-from homeassistant.helpers import entity_platform
 
-from .const import DEFAULTS, GLOBAL_NUMBERS, PER_LIGHT_KEYS
+from .const import DEFAULTS, GLOBAL_NUMBERS
 from .entity import DuskyEntity
 
 if TYPE_CHECKING:
@@ -31,14 +30,8 @@ async def async_setup_entry(
     for light in c.lights:
         for kind, label in (("normal", "High"), ("floor", "Low")):
             entities.append(OverrideNumber(c, entry.entry_id, light, kind, label))
-        for spec in GLOBAL_NUMBERS:
-            if spec[0] in PER_LIGHT_KEYS:
-                entities.append(InheritNumber(c, entry.entry_id, light, *spec))
     entities.append(DemoLengthNumber(c, entry.entry_id))
     async_add_entities(entities)
-    entity_platform.async_get_current_platform().async_register_entity_service(
-        "clear_override", {}, "async_clear_override"
-    )
 
 
 class DuskyNumber(DuskyEntity, RestoreNumber):
@@ -59,19 +52,14 @@ class DuskyNumber(DuskyEntity, RestoreNumber):
             else self.default
         )
         self._attr_native_value = value
-        if value is not None:
-            self._apply(
-                value, tick=False
-            )  # restored silently; the controller isn't running yet
+        self._apply(
+            value, tick=False
+        )  # restored silently; the controller isn't running yet
 
     async def async_set_native_value(self, value: float) -> None:
         self._attr_native_value = value
         self._apply(value, tick=True)
         self.async_write_ha_state()
-
-    async def async_clear_override(self) -> None:
-        """Back to following the global value (only meaningful for per-light numbers)."""
-        raise NotImplementedError
 
 
 class GlobalNumber(DuskyNumber):
@@ -121,47 +109,6 @@ class OverrideNumber(DuskyNumber):
 
     def _apply(self, value: float, *, tick: bool) -> None:
         self.controller.set_override(self.light, self.kind, value, tick=tick)
-
-    async def async_clear_override(self) -> None:
-        self._attr_native_value = 0.0
-        self._apply(0.0, tick=True)
-        self.async_write_ha_state()
-
-
-class InheritNumber(DuskyNumber):
-    """A per-light start/end/sharpness; unknown means "follow the global value"."""
-
-    default = None  # type: ignore[assignment]
-
-    def __init__(
-        self,
-        controller: Controller,
-        entry_id: str,
-        light: str,
-        key: str,
-        name: str,
-        lo: float,
-        hi: float,
-        step: float,
-        unit: str | None,
-    ) -> None:
-        super().__init__(controller, entry_id, light)
-        self.key = key
-        self._attr_name = name
-        self._attr_unique_id = f"{entry_id}_{light}_{key}_override"
-        self._attr_native_min_value = lo
-        self._attr_native_max_value = hi
-        self._attr_native_step = step
-        self._attr_native_unit_of_measurement = unit
-        self._attr_native_value = None
-
-    def _apply(self, value: float | None, *, tick: bool) -> None:
-        self.controller.set_override(self.light, self.key, value, tick=tick)
-
-    async def async_clear_override(self) -> None:
-        self._attr_native_value = None
-        self._apply(None, tick=True)
-        self.async_write_ha_state()
 
 
 class DemoLengthNumber(DuskyNumber):

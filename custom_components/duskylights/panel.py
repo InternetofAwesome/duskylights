@@ -33,7 +33,6 @@ from .const import (
     K_SHARP_END,
     K_SHARP_START,
     K_START,
-    PER_LIGHT_KEYS,
 )
 
 if TYPE_CHECKING:
@@ -66,10 +65,6 @@ def build_info(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]:
                 "name": state.name if state else light,
                 "high": _entity(reg, "number", f"{eid}_{light}_normal_override"),
                 "low": _entity(reg, "number", f"{eid}_{light}_floor_override"),
-                **{
-                    key: _entity(reg, "number", f"{eid}_{light}_{key}_override")
-                    for key in PER_LIGHT_KEYS
-                },
                 "release": _entity(reg, "button", f"{eid}_release_{light}"),
                 "target": _entity(reg, "sensor", f"{eid}_{light}_target"),
             }
@@ -144,7 +139,7 @@ async def ws_sun_path(hass: HomeAssistant, connection, msg: dict[str, Any]) -> N
 PREVIEW = vol.Schema(
     {
         vol.Optional("settings"): {str: vol.Coerce(float)},
-        vol.Optional("overrides"): {str: vol.Any(None, vol.Coerce(float))},
+        vol.Optional("overrides"): {str: vol.Coerce(float)},
     }
 )
 

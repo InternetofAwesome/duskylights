@@ -82,13 +82,7 @@ live on the "Dusky" device: `number.dusky_high`, `number.dusky_low`,
 
 - Numbers (global): start/end elevation, high (normal) and low (minimum)
   brightness, sharpness at each end.
-- Numbers (per light): any of the six settings can be overridden for one light
-  (`number.dusky_<light>_start_elevation`, `_end_elevation`, `_start_sharpness`,
-  `_end_sharpness`, `_high`, `_low`). High and low use **0 = use the global value**;
-  the other four show **unknown** until you set them, which means "follow the global
-  value". The `duskylights.clear_override` service (or "Use default" in the panel)
-  puts one back. In the panel, click a light's name and the Settings card edits
-  just that light.
+- Numbers (per light): high / low override. **0 = use the global value.**
 - Buttons: resume auto for one light, or all (cancels a manual dim, so the light follows the sun again).
 - Sensors: each light's target brightness (with `holding`, `hold_brightness` and
   `demo` attributes) and the interpolated sun elevation in use.

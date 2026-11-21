@@ -33,7 +33,6 @@ from .const import (
     K_SHARP_END,
     K_SHARP_START,
     K_START,
-    PER_LIGHT_KEYS,
     TICK_S,
     TRANSITION_S,
     TURN_ON_DELAY_S,
@@ -138,37 +137,13 @@ class Controller:
 
     @callback
     def set_override(
-        self, light: str, kind: str, value: float | None, *, tick: bool = True
+        self, light: str, kind: str, value: float, *, tick: bool = True
     ) -> None:
-        """Set one per-light value; None puts it back to following the global one."""
-        ov = self.overrides.setdefault(light, {"normal": 0.0, "floor": 0.0})
-        if value is None:
-            if kind in ("normal", "floor"):
-                ov[kind] = 0.0  # High/Low use 0 for "global"
-            else:
-                ov.pop(kind, None)
-        else:
-            ov[kind] = float(value)
+        self.overrides.setdefault(light, {"normal": 0.0, "floor": 0.0})[kind] = float(
+            value
+        )
         if tick:
             self._tick()
-
-    def effective(
-        self,
-        light: str,
-        values: dict[str, float] | None = None,
-        ov: dict[str, float] | None = None,
-    ) -> dict[str, float]:
-        """This light's six curve numbers: its own where set, else the global ones."""
-        values = values or self.values
-        ov = self.overrides.get(light, {}) if ov is None else ov
-        return {
-            K_START: ov.get(K_START, values[K_START]),
-            K_END: ov.get(K_END, values[K_END]),
-            K_NORMAL: ov.get("normal") or values[K_NORMAL],
-            K_FLOOR: ov.get("floor") or values[K_FLOOR],
-            K_SHARP_START: ov.get(K_SHARP_START, values[K_SHARP_START]),
-            K_SHARP_END: ov.get(K_SHARP_END, values[K_SHARP_END]),
-        }
 
     # ---- curve ---------------------------------------------------------
     def _pct(
@@ -178,15 +153,16 @@ class Controller:
         values: dict[str, float] | None = None,
         ov: dict[str, float] | None = None,
     ) -> float:
-        e = self.effective(light, values, ov)
+        values = values or self.values
+        ov = self.overrides.get(light, {}) if ov is None else ov
         return curve.target_pct(
             elevation,
-            start=e[K_START],
-            end=e[K_END],
-            normal=e[K_NORMAL],
-            floor=e[K_FLOOR],
-            sharp_start=e[K_SHARP_START],
-            sharp_end=e[K_SHARP_END],
+            start=values[K_START],
+            end=values[K_END],
+            normal=ov.get("normal") or values[K_NORMAL],
+            floor=ov.get("floor") or values[K_FLOOR],
+            sharp_start=values[K_SHARP_START],
+            sharp_end=values[K_SHARP_END],
         )
 
     def live_elevation(self) -> float | None:
@@ -218,21 +194,10 @@ class Controller:
         return self._live_target(light)
 
     def _in_ramp_window(
-        self,
-        elevation: float | None,
-        values: dict[str, float] | None = None,
-        light: str | None = None,
-        ov: dict[str, float] | None = None,
+        self, elevation: float | None, values: dict[str, float] | None = None
     ) -> bool:
-        """Is the sun inside the dimming window? One light's, else any light's."""
-        if elevation is None:
-            return False
-        lights = [light] if light else self.lights or [""]
-        for lt in lights:
-            e = self.effective(lt, values, ov if light else None)
-            if e[K_END] <= elevation < e[K_START]:
-                return True
-        return False
+        values = values or self.values
+        return elevation is not None and values[K_END] <= elevation < values[K_START]
 
     def holding(self, light: str) -> int | None:
         engine = self.demo_engine if light == self.demo_light else self.engine
@@ -343,7 +308,7 @@ class Controller:
                 self.async_stop_demo()
             else:
                 dawn = self.demo.rising(mono) and self._in_ramp_window(
-                    elev, self._demo_values, self.demo_light, self._demo_ov
+                    elev, self._demo_values
                 )
                 states = {self.demo_light: self._light_state(self.demo_light)}
                 self._run(self.demo_engine.tick(states, now=mono, dawn=dawn))
@@ -376,12 +341,12 @@ class Controller:
         """Real seconds for each ramp: from `total_s`, else the smoothest minimum."""
         if total_s > 0:
             return max(1.0, (total_s - 3 * HOLD_S) / 2)
-        e = self.effective(light, values, ov)
-        swing = self._pct(light, e[K_START] + 1, values, ov) - self._pct(
-            light, e[K_END] - 1, values, ov
+        v = values or self.values
+        swing = self._pct(light, v[K_START] + 1, v, ov) - self._pct(
+            light, v[K_END] - 1, v, ov
         )
         return min_ramp_seconds(
-            swing, curve.peak_slope(e[K_SHARP_START], e[K_SHARP_END])
+            swing, curve.peak_slope(v[K_SHARP_START], v[K_SHARP_END])
         )
 
     def _clean_preview(
@@ -399,13 +364,7 @@ class Controller:
         ov = dict(self.overrides.get(light, {"normal": 0.0, "floor": 0.0}))
         for kind, raw in (preview.get("overrides") or {}).items():
             if kind in ("normal", "floor"):
-                ov[kind] = 0.0 if raw is None else min(100.0, max(0.0, float(raw)))
-            elif kind in limits and kind in PER_LIGHT_KEYS:
-                if raw is None:
-                    ov.pop(kind, None)
-                else:
-                    lo, hi = limits[kind]
-                    ov[kind] = min(hi, max(lo, float(raw)))
+                ov[kind] = min(100.0, max(0.0, float(raw)))
         return values, ov
 
     async def async_start_demo(
@@ -439,8 +398,8 @@ class Controller:
             day=day or dt_util.now().date(),
             start_hour=12,
             started_at=time.monotonic(),
-            start_elev=self.effective(light, self._demo_values, self._demo_ov)[K_START],
-            end_elev=self.effective(light, self._demo_values, self._demo_ov)[K_END],
+            start_elev=(self._demo_values or self.values)[K_START],
+            end_elev=(self._demo_values or self.values)[K_END],
             ramp_s=self.demo_ramp_seconds(
                 light, seconds, self._demo_values, self._demo_ov
             ),
