@@ -151,6 +151,9 @@ td input[type=number] { width:104px; }
 .badge.demo { background:var(--primary-color,#03a9f4); color:var(--text-primary-color,#fff); }
 .demo-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; align-items:end; }
 .demo-grid label { display:block; font-size:12px; color:var(--secondary-text-color,#727272); margin-bottom:4px; }
+.legend .pick { cursor:pointer; }
+.legend .pick.on { font-weight:600; }
+.legend .pick:hover { text-decoration:underline; }
 .legend { display:flex; flex-wrap:wrap; gap:14px; margin-top:8px; font-size:13px; }
 .err { color:var(--error-color,#db4437); padding:16px; }
 @media (max-width: 640px) {
@@ -479,6 +482,15 @@ class DuskyPanel extends HTMLElement {
       this._rows[key] = { gid, range, num, row, lnk, tip, zero: key === "normal_pct" || key === "floor_pct" };
     }
     this._zeroIds = new Set(info.lights.flatMap((l) => [l.high, l.low]));
+    const legend = root.getElementById("legend");
+    legend.addEventListener("click", (e) => {
+      const el = e.target.closest ? e.target.closest("[data-light]") : null;
+      if (el) this._pickLight(el.dataset.light);
+    });
+    legend.addEventListener("keydown", (e) => {
+      const el = e.target.closest ? e.target.closest("[data-light]") : null;
+      if (el && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); this._pickLight(el.dataset.light); }
+    });
     root.getElementById("setAll").addEventListener("click", () => {
       this._sel = null;
       this._markSel();
@@ -503,10 +515,7 @@ class DuskyPanel extends HTMLElement {
       tr.querySelector("td").style.cursor = "pointer";
       tr.querySelector("td").setAttribute("data-tip", "Click to see this light's own curve on the graph.");
       tr.querySelector("td").addEventListener("click", () => {
-        this._sel = this._sel === l.light ? null : l.light;
-        if (this._sel) this._d.light = l.light; // the demo now tries changes on the light you are looking at
-        this._markSel();
-        this._update();
+        this._pickLight(l.light);
       });
       const wire = (cls, id) => {
         const inp = tr.querySelector(cls);
@@ -784,6 +793,13 @@ class DuskyPanel extends HTMLElement {
   }
 
   // ---- graph -----------------------------------------------------------------
+  _pickLight(id) {
+    this._sel = this._sel === id ? null : id;
+    if (this._sel) this._d.light = id; // the demo now tries changes on the light you are looking at
+    this._markSel();
+    this._update();
+  }
+
   _markSel() {
     for (const r of this._lightRows || []) r.tr.classList.toggle("sel", r.l.light === this._sel);
   }
@@ -912,7 +928,7 @@ class DuskyPanel extends HTMLElement {
         lastX = X(e);
       }
     }
-    o.push(`<text class="axis" x="${(L + W - R) / 2}" y="${H - 6}" text-anchor="middle">sun elevation, with this evening\u2019s clock times</text>`);
+    o.push(`<text class="axis" x="${(L + W - R) / 2}" y="${H - 6}" text-anchor="middle">sun height above the horizon, with this evening\u2019s clock times</text>`);
 
     // per-light curves: the picked light alone and bold, else every light that differs
     info.lights.forEach((l, i) => {
@@ -961,11 +977,11 @@ class DuskyPanel extends HTMLElement {
     this.shadowRoot.getElementById("legend").innerHTML =
       (sel
         ? `<span><b>${esc(sel.name)}</b>: Day ${fmt(this._lightParams(sel, G).high, 0)}%, Night ${fmt(this._lightParams(sel, G).low, 0)}% (dashed = global)</span>`
-        : `<span class="sub">Click a light's name below to see just its curve.</span>`) +
+        : `<span class="sub">Click a light's name to see just its curve.</span>`) +
       `<span data-tip="The schedule every light follows, unless it has its own settings."><span class="dot" style="background:${AMBER}"></span>global curve</span>` +
       `<span data-tip="The shading shows how dark the sky is: day, then civil, nautical and astronomical twilight, then night. These are the standard astronomical definitions from the sun's height, not measurements. Hover a band for today's times."><span class="dot" style="background:var(--secondary-text-color,#888);opacity:.5"></span>sky darkness</span>` +
       info.lights
-        .map((l, i) => `<span data-tip="${esc(l.name)}: drawn dashed where it differs from the global curve. Click its name in the table to edit just this light."><span class="dot" style="background:${SERIES[i % SERIES.length]}"></span>${esc(l.name)}</span>`)
+        .map((l, i) => `<span class="pick${sel === l ? " on" : ""}" role="button" tabindex="0" data-light="${esc(l.light)}" data-tip="${esc(l.name)}: drawn dashed where it differs from the global curve. Click to show just this light; click again to show all."><span class="dot" style="background:${SERIES[i % SERIES.length]}"></span>${esc(l.name)}</span>`)
         .join("");
   }
 }

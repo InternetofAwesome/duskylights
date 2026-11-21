@@ -283,3 +283,17 @@ def test_saved_values_that_break_the_rules_are_flagged_and_fixed_with_one_click(
     assert not [
         c for c in r["calls"] if c[1] == "set_value"
     ]  # nothing written until Save
+
+
+def test_legend_names_select_a_light_and_the_caption_is_plain_language():
+    r = out(dom(f"{HARNESS}?legendclick=1"))
+    assert r["errors"] == []
+    assert r["before"] == "Settings"
+    assert r["afterClick"] == "Settings: Kitchen lights"
+    assert (
+        r["bold"] and r["row"]
+    )  # the legend entry and the table row both show the pick
+    assert r["demoLight"] == "light.kitchen"
+    assert r["afterSecond"] == "Settings"  # clicking again goes back to all lights
+    assert r["byKey"] == "Settings: Living lights"  # keyboard works too
+    assert "elevation" not in r["caption"] and "sun height" in r["caption"]

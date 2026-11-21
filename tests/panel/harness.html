@@ -227,6 +227,19 @@ if (q.get("mode") === "parity") {
     out.textContent = JSON.stringify({ errors: window.__errs, before, dirtyBefore, afterFirst, afterSecond, calls: window.calls });
     document.body.appendChild(out);
   }
+  if (q.get("legendclick")) {
+    await new Promise((r) => setTimeout(r, 200));
+    const sr = el.shadowRoot, pick = (n) => [...sr.querySelectorAll("#legend [data-light]")][n];
+    const title = () => sr.getElementById("setTitle").textContent;
+    const res = { before: title(), caption: [...sr.querySelectorAll("svg text")].map((t) => t.textContent).find((t) => t.includes("clock times")) };
+    pick(1).click(); res.afterClick = title(); res.bold = pick(1).classList.contains("on"); res.row = sr.querySelectorAll("#lights tbody tr")[1].classList.contains("sel");
+    res.demoLight = el._d.light;
+    sr.querySelector("#legend [data-light].on").click(); res.afterSecond = title();   // click again: all lights
+    pick(0).dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); res.byKey = title();
+    const out = document.createElement("pre"); out.id = "out";
+    out.textContent = JSON.stringify({ errors: window.__errs, ...res });
+    document.body.appendChild(out);
+  }
   if (q.get("manage")) {
     await new Promise((r) => setTimeout(r, 200));
     const sr = el.shadowRoot;
