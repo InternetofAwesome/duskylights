@@ -509,7 +509,7 @@ class DuskyPanel extends HTMLElement {
         if (this.shadowRoot.activeElement === inp) return;
         const v = this._num(id, 0);
         inp.value = v ? v : "";
-        inp.placeholder = "global " + fmt(glob, 0);
+        inp.placeholder = fmt(glob, 0) + " (default)";
       };
       set(hi, l.high, g.high);
       set(lo, l.low, g.low);
