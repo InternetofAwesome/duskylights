@@ -28,10 +28,7 @@ async def async_setup_entry(
         GlobalNumber(c, entry.entry_id, *spec) for spec in GLOBAL_NUMBERS
     ]
     for light in c.lights:
-        for kind, label in (
-            ("normal", "normal brightness"),
-            ("floor", "minimum brightness"),
-        ):
+        for kind, label in (("normal", "High"), ("floor", "Low")):
             entities.append(OverrideNumber(c, entry.entry_id, light, kind, label))
     async_add_entities(entities)
 
@@ -103,16 +100,11 @@ class OverrideNumber(DuskyNumber):
     def __init__(
         self, controller: Controller, entry_id: str, light: str, kind: str, label: str
     ) -> None:
-        super().__init__(controller, entry_id)
-        self.light = light
+        super().__init__(controller, entry_id, light)
         self.kind = kind
-        self._label = label
+        self._attr_name = label
         self._attr_unique_id = f"{entry_id}_{light}_{kind}_override"
         self._attr_native_value = 0.0
-
-    @property
-    def name(self) -> str:
-        return f"{self.light_name(self.light)} {self._label} override"
 
     def _apply(self, value: float, *, tick: bool) -> None:
         self.controller.set_override(self.light, self.kind, value, tick=tick)

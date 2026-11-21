@@ -9,12 +9,27 @@ tests in Home Assistant's own test harness (config flow, entities, curve, holds,
 release, overrides, demo), but it has **not yet been run against real lights**.
 Treat it as pre-release.
 
+## Install (HACS)
+
+1. HACS → ⋮ → **Custom repositories** → add
+   `https://github.com/InternetofAwesome/duskylights`, category **Integration**.
+2. Download **Dusky Lights** in HACS, then restart Home Assistant.
+3. Settings → Devices & services → **Add integration** → Dusky Lights, and pick
+   the lights to manage. (Start with one.)
+
 ## Entities
 
-- Numbers (global): ramp-start elevation, minimum-reached elevation, normal
-  brightness, minimum brightness, sharpness at each end.
-- Numbers (per light): normal / minimum brightness override. **0 = use the
-  global value.**
+Each managed light gets its own device, "Dusky <light name>", so ids stay short:
+`number.dusky_<light>_high`, `number.dusky_<light>_low`,
+`button.dusky_<light>_release`, `sensor.dusky_<light>_target`. Global settings
+live on the "Dusky" device: `number.dusky_high`, `number.dusky_low`,
+`number.dusky_start_elevation`, `number.dusky_end_elevation`,
+`number.dusky_start_sharpness`, `number.dusky_end_sharpness`,
+`button.dusky_release_all`, `sensor.dusky_sun_elevation`.
+
+- Numbers (global): start/end elevation, high (normal) and low (minimum)
+  brightness, sharpness at each end.
+- Numbers (per light): high / low override. **0 = use the global value.**
 - Buttons: release one light, or all, back onto the curve.
 - Sensors: each light's target brightness (with `holding`, `hold_brightness` and
   `demo` attributes) and the interpolated sun elevation in use.

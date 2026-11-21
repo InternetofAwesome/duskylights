@@ -36,13 +36,9 @@ class TargetSensor(DuskyEntity, SensorEntity):
     _attr_suggested_display_precision = 1
 
     def __init__(self, controller: Controller, entry_id: str, light: str) -> None:
-        super().__init__(controller, entry_id)
-        self.light = light
+        super().__init__(controller, entry_id, light)
+        self._attr_name = "Target"
         self._attr_unique_id = f"{entry_id}_{light}_target"
-
-    @property
-    def name(self) -> str:
-        return f"{self.light_name(self.light)} target brightness"
 
     @property
     def native_value(self) -> float:
@@ -61,7 +57,7 @@ class TargetSensor(DuskyEntity, SensorEntity):
 
 
 class ElevationSensor(DuskyEntity, SensorEntity):
-    _attr_name = "Sun elevation (interpolated)"
+    _attr_name = "Sun elevation"
     _attr_native_unit_of_measurement = "°"
     _attr_state_class = SensorStateClass.MEASUREMENT
     _attr_suggested_display_precision = 2

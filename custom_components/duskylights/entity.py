@@ -9,11 +9,21 @@ from .const import DOMAIN
 from .controller import Controller
 
 
-def device_info(entry_id: str) -> DeviceInfo:
+def device_info(entry_id: str, light: str | None, light_name: str) -> DeviceInfo:
+    """The hub device ("Dusky") or one device per light ("Dusky <light>").
+
+    Entity ids are device name + entity name, so this keeps them short:
+    number.dusky_living_room_high, not number.dusky_lights_living_room_...
+    """
+    if light is None:
+        return DeviceInfo(
+            identifiers={(DOMAIN, entry_id)}, name="Dusky", manufacturer="Dusky Lights"
+        )
     return DeviceInfo(
-        identifiers={(DOMAIN, entry_id)},
-        name="Dusky Lights",
+        identifiers={(DOMAIN, f"{entry_id}_{light}")},
+        name=f"Dusky {light_name}",
         manufacturer="Dusky Lights",
+        via_device=(DOMAIN, entry_id),
     )
 
 
@@ -23,16 +33,19 @@ class DuskyEntity(Entity):
     _attr_has_entity_name = True
     _attr_should_poll = False
 
-    def __init__(self, controller: Controller, entry_id: str) -> None:
+    def __init__(
+        self, controller: Controller, entry_id: str, light: str | None = None
+    ) -> None:
         self.controller = controller
-        self._attr_device_info = device_info(entry_id)
+        self.light = light
+        name = light_name(controller.hass, light) if light else ""
+        self._attr_device_info = device_info(entry_id, light, name)
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
         self.async_on_remove(self.controller.add_listener(self.async_write_ha_state))
 
-    def light_name(self, light: str) -> str:
-        state = self.hass.states.get(light) if self.hass else None
-        return (
-            state.name if state else light.split(".", 1)[-1].replace("_", " ").title()
-        )
+
+def light_name(hass, light: str) -> str:
+    state = hass.states.get(light)
+    return state.name if state else light.split(".", 1)[-1].replace("_", " ").title()

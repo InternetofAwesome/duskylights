@@ -239,3 +239,27 @@ async def test_demo_rejects_non_light(hass: HomeAssistant) -> None:
             DOMAIN, "demo", {"entity_id": "switch.nope"}, blocking=True
         )
     await teardown(hass, entry)
+
+
+async def test_entity_ids_are_short(hass: HomeAssistant) -> None:
+    entry, _ = await setup(hass)
+    ids = {
+        e.entity_id
+        for e in er.async_get(hass).entities.values()
+        if e.config_entry_id == entry.entry_id
+    }
+    assert {
+        "number.dusky_high",
+        "number.dusky_low",
+        "number.dusky_start_elevation",
+        "number.dusky_end_elevation",
+        "number.dusky_start_sharpness",
+        "number.dusky_end_sharpness",
+        "number.dusky_test_lamp_high",
+        "number.dusky_test_lamp_low",
+        "button.dusky_release_all",
+        "button.dusky_test_lamp_release",
+        "sensor.dusky_test_lamp_target",
+        "sensor.dusky_sun_elevation",
+    } == ids
+    await teardown(hass, entry)

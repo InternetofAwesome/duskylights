@@ -24,12 +24,12 @@ DEFAULTS: dict[str, float] = {
 
 # key, name, min, max, step, unit
 GLOBAL_NUMBERS: tuple[tuple[str, str, float, float, float, str | None], ...] = (
-    (K_START, "Ramp start sun elevation", -20, 40, 0.5, "°"),
-    (K_END, "Minimum reached at sun elevation", -30, 20, 0.5, "°"),
-    (K_NORMAL, "Normal brightness", 1, 100, 1, "%"),
-    (K_FLOOR, "Minimum brightness", 1, 100, 1, "%"),
-    (K_SHARP_START, "Sharpness at ramp start", 0, 3, 0.1, None),
-    (K_SHARP_END, "Sharpness at minimum", 0, 3, 0.1, None),
+    (K_START, "Start elevation", -20, 40, 0.5, "°"),
+    (K_END, "End elevation", -30, 20, 0.5, "°"),
+    (K_NORMAL, "High", 1, 100, 1, "%"),
+    (K_FLOOR, "Low", 1, 100, 1, "%"),
+    (K_SHARP_START, "Start sharpness", 0, 3, 0.1, None),
+    (K_SHARP_END, "End sharpness", 0, 3, 0.1, None),
 )
 
 TICK_S = 15.0  # normal controller tick

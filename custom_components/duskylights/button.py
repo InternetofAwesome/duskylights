@@ -32,15 +32,9 @@ class ReleaseButton(DuskyEntity, ButtonEntity):
     def __init__(
         self, controller: Controller, entry_id: str, light: str | None
     ) -> None:
-        super().__init__(controller, entry_id)
-        self.light = light
+        super().__init__(controller, entry_id, light)
+        self._attr_name = "Release all" if light is None else "Release"
         self._attr_unique_id = f"{entry_id}_release_{light or 'all'}"
-
-    @property
-    def name(self) -> str:
-        if self.light is None:
-            return "Release all lights to the curve"
-        return f"Release {self.light_name(self.light)} to the curve"
 
     async def async_press(self) -> None:
         self.controller.async_release(None if self.light is None else [self.light])
