@@ -185,6 +185,32 @@ if (q.get("mode") === "parity") {
     out.textContent = JSON.stringify({ errors: window.__errs, before, picked, mid, reset, preview, living, back, calls: window.calls });
     document.body.appendChild(out);
   }
+  if (q.get("limits")) {
+    await new Promise((r) => setTimeout(r, 200));
+    const sr = el.shadowRoot, r = el._rows, type = (row, v) => { row.num.value = String(v); row.num.dispatchEvent(new Event("change")); };
+    const snap = () => ({ ...el._draft }), res = {};
+    type(r.start_elevation, -10);                    // start below end (-6): end must follow
+    res.startDown = snap(); res.note1 = sr.getElementById("setNote").textContent;
+    el._draft = {};
+    type(r.end_elevation, 15);                       // end above start (10): start must follow
+    res.endUp = snap();
+    el._draft = {};
+    type(r.floor_pct, 80);                           // Night brighter than Day (50): Day follows
+    res.nightUp = snap();
+    el._draft = {};
+    type(r.normal_pct, 5);                           // Day dimmer than Night (10): Night follows
+    res.dayDown = snap();
+    el._draft = {};
+    type(r.end_elevation, 20); type(r.start_elevation, 20);   // dragging start onto end: end gives way
+    res.atLimit = snap();
+    el._draft = {};
+    const lo = sr.querySelectorAll("#lights tbody tr")[1].querySelector(".lo");    // kitchen: Day 70, Night 20
+    lo.value = "90"; lo.dispatchEvent(new Event("change"));
+    res.light = snap();
+    const out = document.createElement("pre"); out.id = "out";
+    out.textContent = JSON.stringify({ errors: window.__errs, ...res });
+    document.body.appendChild(out);
+  }
   if (q.get("manage")) {
     await new Promise((r) => setTimeout(r, 200));
     const sr = el.shadowRoot;

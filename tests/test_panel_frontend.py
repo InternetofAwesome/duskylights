@@ -233,3 +233,31 @@ def test_the_sky_darkness_bands_are_labelled_ordered_and_carry_todays_times():
     civil = r["bands"][1]["tip"]
     assert "17:13" in civil and "17:48" in civil  # the 0 and -6 degree crossings
     assert [b.get("label") for b in r["bands"]][:2] == ["day", "civil"]
+
+
+def test_sliders_cannot_cross_each_other_and_push_the_other_along():
+    r = out(dom(f"{HARNESS}?limits=1"))
+    assert r["errors"] == []
+    # dimming must end below where it starts (at least 1 degree of sun height)
+    assert r["startDown"] == {
+        "number.dusky_start_elevation": -10,
+        "number.dusky_end_elevation": -11,
+    }
+    assert "Dimmest at moved to -11" in r["note1"]
+    assert r["endUp"] == {
+        "number.dusky_end_elevation": 15,
+        "number.dusky_start_elevation": 16,
+    }
+    # Night is never brighter than Day, and vice versa
+    assert r["nightUp"] == {"number.dusky_low": 80, "number.dusky_high": 80}
+    assert r["dayDown"] == {"number.dusky_high": 5, "number.dusky_low": 5}
+    # dragging one onto the other moves the other, never leaving them equal or crossed
+    assert r["atLimit"] == {
+        "number.dusky_end_elevation": 19,
+        "number.dusky_start_elevation": 20,
+    }
+    # per light: Night cannot pass that light's Day
+    assert r["light"] == {
+        "number.dusky_kitchen_low": 90,
+        "number.dusky_kitchen_high": 90,
+    }

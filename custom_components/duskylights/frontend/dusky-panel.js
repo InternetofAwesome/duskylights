@@ -305,8 +305,55 @@ class DuskyPanel extends HTMLElement {
     return this._hass.callService(domain, service, data);
   }
   _edit(id, value) {
-    this._draft[id] = value;
+    Object.assign(this._draft, this._constrain(id, value));
     this._update();
+  }
+  // Keep pairs in a sensible order: dimming must end below where it starts, and Night cannot be
+  // brighter than Day. The value being dragged pushes the other one along (like a two-handled range
+  // slider); if the other is already at its limit, the dragged one stops instead.
+  _constrain(id, v) {
+    const S = this._info.settings, out = { [id]: v };
+    const limit = (eid, key) => ((this._state(eid) || {}).attributes || {})[key];
+    const label = (key) => (SETTINGS.find((r) => r[0] === key) || [])[1] || key;
+    const GAP = 1; // degrees of sun height between start and end
+    const say = (text) => {
+      this._pushNote = text;
+      clearTimeout(this._pushTimer);
+      this._pushTimer = setTimeout(() => { this._pushNote = null; this._update(); }, 4000);
+    };
+    if (id === S.start_elevation || id === S.end_elevation) {
+      const isStart = id === S.start_elevation;
+      const other = isStart ? S.end_elevation : S.start_elevation;
+      const o = this._num(other);
+      if (Number.isFinite(o) && (isStart ? v < o + GAP : v > o - GAP)) {
+        const lim = limit(other, isStart ? "min" : "max");
+        const no = isStart ? Math.max(lim ?? -Infinity, v - GAP) : Math.min(lim ?? Infinity, v + GAP);
+        out[other] = no;
+        out[id] = isStart ? Math.max(v, no + GAP) : Math.min(v, no - GAP);
+        say(`${label(isStart ? "end_elevation" : "start_elevation")} moved to ${fmt(no, 1)}\u00b0 so dimming still ends below where it starts.`);
+      }
+    } else if (id === S.normal_pct || id === S.floor_pct) {
+      const isHigh = id === S.normal_pct;
+      const other = isHigh ? S.floor_pct : S.normal_pct;
+      const o = this._num(other);
+      if (Number.isFinite(o) && (isHigh ? v < o : v > o)) {
+        out[other] = v;
+        say(`${label(isHigh ? "floor_pct" : "normal_pct")} moved to ${fmt(v, 0)}% so Night is never brighter than Day.`);
+      }
+    } else {
+      const l = this._info.lights.find((x) => x.high === id || x.low === id);
+      if (l && v > 0) {
+        const eff = this._lightParams(l, this._params());
+        if (id === l.high && v < eff.low) {
+          out[l.low] = v;
+          say(`${l.name}'s night brightness moved to ${fmt(v, 0)}% so it is never brighter than its day brightness.`);
+        } else if (id === l.low && v > eff.high) {
+          out[l.high] = v;
+          say(`${l.name}'s day brightness moved to ${fmt(v, 0)}% so it is never dimmer than its night brightness.`);
+        }
+      }
+    }
+    return out;
   }
   _dirtyIds() {
     return Object.keys(this._draft);
@@ -635,7 +682,7 @@ class DuskyPanel extends HTMLElement {
     }
     root.getElementById("setTitle").textContent = sel ? `Settings: ${sel.name}` : "Settings";
     root.getElementById("setAll").hidden = !sel;
-    root.getElementById("setNote").textContent = sel
+    root.getElementById("setNote").textContent = this._pushNote ? this._pushNote : sel
       ? `Only day and night brightness can differ per light. Greyed-out settings are shared by every light.`
       : "These apply to every light unless it has its own. Click a light's name below to set just that one.";
 
