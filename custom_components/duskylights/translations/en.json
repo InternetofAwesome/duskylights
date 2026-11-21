@@ -27,9 +27,8 @@
       "description": "Run a virtual day of the real sun on one light.",
       "fields": {
         "entity_id": { "name": "Light", "description": "The single light to run the demo on." },
-        "duration": { "name": "Duration", "description": "Real minutes for the full 24 virtual hours." },
+        "seconds": { "name": "Cycle length", "description": "Real seconds for one dusk-and-dawn cycle. 0 picks the shortest cycle with steps of 1 % or less." },
         "date": { "name": "Date", "description": "Day whose sun path to use. Defaults to today." },
-        "start_hour": { "name": "Start hour", "description": "Local hour the virtual day starts at." },
         "loop": { "name": "Loop", "description": "Repeat until stopped." }
       }
     },

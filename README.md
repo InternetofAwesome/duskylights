@@ -90,14 +90,19 @@ live on the "Dusky" device: `number.dusky_high`, `number.dusky_low`,
 
 ## Demo mode
 
-`duskylights.demo` (service) runs a virtual 24 hours of the *real sun for the
-chosen date* (default today, so it matches the time of year) over any real
-duration, e.g. 10 minutes. It drives exactly **one** light: `entity_id` is
-required and must be a single light, and no other light is touched. Options:
-`duration` (real minutes for the full day), `date`, `start_hour` (default 12:
-dusk, night, then dawn) and `loop`. While it runs, that light's controller ticks
-every fraction of a second so steps stay small, then it returns to the live sun.
-Stop it early with `duskylights.demo_stop`.
+Plays one compressed cycle of the real sun for today's date (or any `date`) on
+exactly **one** light: the dusk ramp, the dawn ramp, and a short hold on each
+flat stretch between. With the default length it is the shortest cycle in which
+no step changes the brightness by more than about 1 %: about 15 s per ramp at
+the default settings, 30-35 s in all. Sharper curves take longer. The light is
+put back as it was when the demo ends.
+
+From the UI (device "Dusky"): choose **Demo light**, **Demo repeat** (Once or
+Loop) and **Demo length** (seconds, 0 = automatic), then turn on **Demo**.
+Turning it off stops it.
+
+From automations: `duskylights.demo` with `entity_id` (one light), optional
+`seconds`, `date` and `loop`; `duskylights.demo_stop` ends it.
 
 ## License
 

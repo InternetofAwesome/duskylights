@@ -29,7 +29,7 @@ from .const import (
     TRANSITION_S,
     TURN_ON_DELAY_S,
 )
-from .demo import Demo
+from .demo import HOLD_S, Demo, min_ramp_seconds
 from .engine import Action, Engine, pct_to_bri
 
 if TYPE_CHECKING:
@@ -59,6 +59,11 @@ class Controller:
         self.demo_light: str | None = None
         self.demo_engine: Engine | None = None
         self._demo_unsub: Callable[[], None] | None = None
+        self._demo_restore: tuple[str, bool, int | None] | None = None
+        # choices made in the UI (the demo switch uses these)
+        self.demo_choice: str | None = self.lights[0] if self.lights else None
+        self.demo_loop = False
+        self.demo_seconds = 0.0  # 0 = shortest cycle that keeps steps <= 1 %
         self._sun_prev: tuple[float, float] | None = None
         self._sun_last: tuple[float, float] | None = None
         self._sun_rising = False
@@ -299,30 +304,51 @@ class Controller:
         self._timer = async_call_later(self.hass, interval, self._tick)
 
     # ---- demo ----------------------------------------------------------
+    def demo_ramp_seconds(self, light: str, total_s: float = 0.0) -> float:
+        """Real seconds for each ramp: from `total_s`, else the smoothest minimum."""
+        if total_s > 0:
+            return max(1.0, (total_s - 3 * HOLD_S) / 2)
+        swing = self._pct(light, self.values[K_START] + 1) - self._pct(
+            light, self.values[K_END] - 1
+        )
+        peak = curve.peak_slope(self.values[K_SHARP_START], self.values[K_SHARP_END])
+        return min_ramp_seconds(swing, peak)
+
     async def async_start_demo(
         self,
         light: str,
         *,
-        duration_min: float,
-        day: date | None,
-        start_hour: float,
-        loop: bool,
+        seconds: float = 0.0,
+        day: date | None = None,
+        loop: bool = False,
     ) -> None:
-        """Run a virtual day of the real sun on one light."""
+        """Play one compressed dusk-and-dawn cycle of the real sun on one light.
+
+        `seconds` is the whole cycle's length; 0 picks the shortest cycle in
+        which no tick changes the brightness by more than about 1 %.
+        """
         self.async_stop_demo()
         cfg = self.hass.config
-        self.demo = Demo.for_day(
+        self.demo = Demo.cycle(
             lat=cfg.latitude,
             lon=cfg.longitude,
             tz=dt_util.get_default_time_zone(),
             day=day or dt_util.now().date(),
-            start_hour=start_hour,
+            start_hour=12,
             started_at=time.monotonic(),
-            duration_s=duration_min * 60,
+            start_elev=self.values[K_START],
+            end_elev=self.values[K_END],
+            ramp_s=self.demo_ramp_seconds(light, seconds),
             loop=loop,
         )
         self.demo_light = light
         self.demo_engine = Engine(self._demo_target)
+        state = self.hass.states.get(light)
+        self._demo_restore = (
+            light,
+            bool(state and state.state == STATE_ON),
+            state.attributes.get(ATTR_BRIGHTNESS) if state else None,
+        )
         if light in self.lights:
             self.engine.release(light)
             self._seen.discard(light)
@@ -347,6 +373,7 @@ class Controller:
     @callback
     def async_stop_demo(self) -> None:
         light = self.demo_light
+        restore, self._demo_restore = self._demo_restore, None
         self.demo = None
         self.demo_light = None
         self.demo_engine = None
@@ -355,4 +382,20 @@ class Controller:
             self._demo_unsub = None
         if light and light in self.lights:
             self.engine.release(light)
+        if restore:
+            self.hass.async_create_task(self._restore(*restore))
         self._notify()
+
+    async def _restore(self, light: str, was_on: bool, bri: int | None) -> None:
+        """Put the light back as it was before the demo."""
+        if was_on:
+            data = {ATTR_ENTITY_ID: light, ATTR_TRANSITION: 1}
+            if bri is not None:
+                data[ATTR_BRIGHTNESS] = bri
+            await self.hass.services.async_call(
+                "light", "turn_on", data, context=self.context
+            )
+        else:
+            await self.hass.services.async_call(
+                "light", "turn_off", {ATTR_ENTITY_ID: light}, context=self.context
+            )

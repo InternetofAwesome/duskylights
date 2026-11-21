@@ -14,7 +14,13 @@ if TYPE_CHECKING:
     from homeassistant.config_entries import ConfigEntry
     from homeassistant.core import HomeAssistant
 
-PLATFORMS = [Platform.BUTTON, Platform.NUMBER, Platform.SENSOR]
+PLATFORMS = [
+    Platform.BUTTON,
+    Platform.NUMBER,
+    Platform.SELECT,
+    Platform.SENSOR,
+    Platform.SWITCH,
+]
 
 type DuskyConfigEntry = ConfigEntry[Controller]
 

@@ -38,6 +38,12 @@ def shape(x: float, a: float = 0.0, b: float = 0.0) -> float:
     return min(1.0, max(0.0, h00 - a * h10 - b * h11))
 
 
+def peak_slope(a: float = 0.0, b: float = 0.0) -> float:
+    """Steepest |d shape / d progress| over the ramp (1.5 for sharpness 0)."""
+    n = 400
+    return max(abs(shape((i + 1) / n, a, b) - shape(i / n, a, b)) * n for i in range(n))
+
+
 def target_pct(
     elevation: float,
     start: float,

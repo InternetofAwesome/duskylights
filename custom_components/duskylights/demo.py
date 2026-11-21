@@ -15,6 +15,18 @@ DAY_S = 86400.0
 MIN_TICK_S = 0.25
 MAX_TICK_S = 15.0
 VIRTUAL_STEP_S = 120.0  # aim for no more than ~2 virtual minutes per tick
+HOLD_S = 1.5  # real seconds spent on each flat stretch of a compressed cycle
+STEP_PCT = 1.0  # largest brightness jump allowed per tick when auto-sizing
+
+
+def min_ramp_seconds(
+    swing_pct: float,
+    peak_slope: float,
+    tick_s: float = MIN_TICK_S,
+    step_pct: float = STEP_PCT,
+) -> float:
+    """Shortest real duration of one ramp that keeps every tick under `step_pct`."""
+    return max(1.0, swing_pct * peak_slope * tick_s / step_pct)
 
 
 @dataclass(frozen=True)
@@ -27,6 +39,59 @@ class Demo:
     started_at: float  # real clock reading when the demo began
     duration_s: float  # real seconds for one full 24 h of virtual time
     loop: bool = False
+    # Optional (real_s, virtual_s) keyframes; empty means a uniform 24 h.
+    keys: tuple[tuple[float, float], ...] = ()
+    tick_s: float | None = None  # fixed tick interval, if set
+
+    @classmethod
+    def cycle(
+        cls,
+        *,
+        lat: float,
+        lon: float,
+        tz: tzinfo,
+        day: date,
+        start_hour: float,
+        started_at: float,
+        start_elev: float,
+        end_elev: float,
+        ramp_s: float,
+        hold_s: float = HOLD_S,
+        tick_s: float = MIN_TICK_S,
+        loop: bool = False,
+    ) -> Demo:
+        """A compressed day: only the dusk and dawn ramps play at length.
+
+        The flat stretches before, between and after the ramps are skipped in
+        `hold_s` each, so a whole cycle is about 2 * ramp_s + 3 * hold_s long.
+        """
+        start = datetime.combine(day, time(), tzinfo=tz) + timedelta(hours=start_hour)
+        total = 2 * ramp_s + 3 * hold_s
+        step = 60
+        runs: list[list[float]] = []  # [first, last, first_elev, last_elev]
+        inside = False
+        for t in range(0, int(DAY_S) + 1, step):
+            e = solar_elevation(lat, lon, start + timedelta(seconds=t))
+            if end_elev <= e < start_elev:
+                if inside:
+                    runs[-1][1], runs[-1][3] = t, e
+                else:
+                    runs.append([t, t, e, e])
+                inside = True
+            else:
+                inside = False
+        dusk = next((r for r in runs if r[3] < r[2]), None)
+        dawn = next((r for r in runs if r[3] > r[2] and r is not dusk), None)
+        if dusk is None or dawn is None:  # polar day/night: no ramps to compress
+            return cls(lat, lon, start, started_at, total, loop, (), tick_s)
+        d0, d1 = max(0.0, dusk[0] - step), min(DAY_S, dusk[1] + step)
+        r0, r1 = max(0.0, dawn[0] - step), min(DAY_S, dawn[1] + step)
+        t1 = hold_s
+        t2 = t1 + ramp_s
+        t3 = t2 + hold_s
+        t4 = t3 + ramp_s
+        keys = ((0.0, 0.0), (t1, d0), (t2, d1), (t3, r0), (t4, r1), (total, DAY_S))
+        return cls(lat, lon, start, started_at, total, loop, keys, tick_s)
 
     @classmethod
     def for_day(
@@ -59,7 +124,16 @@ class Demo:
         p = (now - self.started_at) / self.duration_s
         if p >= 1.0 and not self.loop:
             return None
-        return p % 1.0 if self.loop else max(0.0, p)
+        p = p % 1.0 if self.loop else max(0.0, p)
+        if not self.keys:
+            return p
+        return self._virtual_offset(p * self.duration_s) / DAY_S
+
+    def _virtual_offset(self, real: float) -> float:
+        for (r0, v0), (r1, v1) in zip(self.keys, self.keys[1:], strict=False):
+            if real <= r1:
+                return v1 if r1 <= r0 else v0 + (v1 - v0) * (real - r0) / (r1 - r0)
+        return self.keys[-1][1]
 
     def virtual_time(self, now: float) -> datetime | None:
         p = self.progress(now)
@@ -83,4 +157,6 @@ class Demo:
 
     def tick_interval(self) -> float:
         """Real seconds between controller ticks so steps stay small and smooth."""
+        if self.tick_s is not None:
+            return self.tick_s
         return min(MAX_TICK_S, max(MIN_TICK_S, VIRTUAL_STEP_S / self.speed))

@@ -18,13 +18,10 @@ RELEASE_SCHEMA = vol.Schema({vol.Optional("entity_id"): cv.entity_ids})
 DEMO_SCHEMA = vol.Schema(
     {
         vol.Required("entity_id"): cv.entity_domain("light"),
-        vol.Optional("duration", default=10): vol.All(
-            vol.Coerce(float), vol.Range(min=0.05, max=1440)
+        vol.Optional("seconds", default=0): vol.All(
+            vol.Coerce(float), vol.Range(min=0, max=600)
         ),
         vol.Optional("date"): cv.date,
-        vol.Optional("start_hour", default=12): vol.All(
-            vol.Coerce(float), vol.Range(min=0, max=24)
-        ),
         vol.Optional("loop", default=False): cv.boolean,
     }
 )
@@ -44,9 +41,8 @@ def async_register_services(hass: HomeAssistant) -> None:
     async def demo(call: ServiceCall) -> None:
         await _controller(hass).async_start_demo(
             call.data["entity_id"],
-            duration_min=call.data["duration"],
+            seconds=call.data["seconds"],
             day=call.data.get("date"),
-            start_hour=call.data["start_hour"],
             loop=call.data["loop"],
         )
 

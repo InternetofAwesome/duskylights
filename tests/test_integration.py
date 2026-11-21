@@ -215,7 +215,7 @@ async def test_demo_runs_one_light_and_stops(hass: HomeAssistant) -> None:
     await hass.services.async_call(
         DOMAIN,
         "demo",
-        {"entity_id": LIGHT, "duration": 0.5, "date": "2026-06-21", "start_hour": 12},
+        {"entity_id": LIGHT, "seconds": 20, "date": "2026-06-21"},
         blocking=True,
     )
     await hass.async_block_till_done()
@@ -261,5 +261,41 @@ async def test_entity_ids_are_short(hass: HomeAssistant) -> None:
         "button.dusky_test_lamp_release",
         "sensor.dusky_test_lamp_target",
         "sensor.dusky_sun_elevation",
+        "number.dusky_demo_length",
+        "select.dusky_demo_light",
+        "select.dusky_demo_repeat",
+        "switch.dusky_demo",
     } == ids
+    await teardown(hass, entry)
+
+
+async def test_demo_switch_uses_ui_choices_and_restores_light(
+    hass: HomeAssistant,
+) -> None:
+    entry, calls = await setup(hass, brightness=20)
+    switch = entity(hass, entry, "demo")
+    repeat = entity(hass, entry, "demo_repeat")
+    await hass.services.async_call(
+        "select",
+        "select_option",
+        {"entity_id": repeat, "option": "Loop"},
+        blocking=True,
+    )
+    assert hass.states.get(repeat).state == "Loop"
+    assert entry.runtime_data.demo_loop is True
+
+    await hass.services.async_call(
+        "switch", "turn_on", {"entity_id": switch}, blocking=True
+    )
+    await hass.async_block_till_done()
+    assert hass.states.get(switch).state == "on"
+    assert entry.runtime_data.demo.loop is True
+
+    calls.clear()
+    await hass.services.async_call(
+        "switch", "turn_off", {"entity_id": switch}, blocking=True
+    )
+    await hass.async_block_till_done()
+    assert hass.states.get(switch).state == "off"
+    assert calls[-1].data["brightness"] == 20  # back where it was before the demo
     await teardown(hass, entry)

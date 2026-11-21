@@ -30,6 +30,7 @@ async def async_setup_entry(
     for light in c.lights:
         for kind, label in (("normal", "High"), ("floor", "Low")):
             entities.append(OverrideNumber(c, entry.entry_id, light, kind, label))
+    entities.append(DemoLengthNumber(c, entry.entry_id))
     async_add_entities(entities)
 
 
@@ -108,3 +109,22 @@ class OverrideNumber(DuskyNumber):
 
     def _apply(self, value: float, *, tick: bool) -> None:
         self.controller.set_override(self.light, self.kind, value, tick=tick)
+
+
+class DemoLengthNumber(DuskyNumber):
+    """Length of one demo cycle in seconds; 0 = shortest with steps <= 1 %."""
+
+    _attr_name = "Demo length"
+    _attr_native_min_value = 0
+    _attr_native_max_value = 600
+    _attr_native_step = 1
+    _attr_native_unit_of_measurement = "s"
+    _attr_entity_category = None
+
+    def __init__(self, controller: Controller, entry_id: str) -> None:
+        super().__init__(controller, entry_id)
+        self._attr_unique_id = f"{entry_id}_demo_length"
+        self._attr_native_value = 0.0
+
+    def _apply(self, value: float, *, tick: bool) -> None:
+        self.controller.demo_seconds = float(value)

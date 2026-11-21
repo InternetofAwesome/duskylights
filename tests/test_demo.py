@@ -7,7 +7,7 @@ from zoneinfo import ZoneInfo
 sys.path.insert(0, str(Path(__file__).parents[1] / "custom_components"))
 from duskylights import curve, demo, engine, solar
 
-LAT, LON = 37.7793, -122.4193
+LAT, LON = 37.7793, -122.4193  # San Francisco City Hall (public landmark)
 # 2026-11-20 12:00 local (PST = UTC-8)
 NOON = datetime(2026, 11, 20, 20, 0, tzinfo=UTC)
 
@@ -141,3 +141,67 @@ class FullDaySimulation(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CycleTests(unittest.TestCase):
+    TZ = ZoneInfo("America/Los_Angeles")
+
+    def make_cycle(self, ramp_s, **kw):
+        return demo.Demo.cycle(
+            lat=LAT,
+            lon=LON,
+            tz=self.TZ,
+            day=date(2026, 11, 20),
+            start_hour=12,
+            started_at=0.0,
+            start_elev=10.0,
+            end_elev=-6.0,
+            ramp_s=ramp_s,
+            **kw,
+        )
+
+    def test_length_is_two_ramps_and_three_holds(self):
+        d = self.make_cycle(15.0)
+        self.assertAlmostEqual(d.duration_s, 2 * 15.0 + 3 * demo.HOLD_S)
+        self.assertIsNone(d.virtual_time(d.duration_s + 0.1))
+
+    def test_min_ramp_seconds(self):
+        # 40 % swing, smoothstep peak slope 1.5, 0.25 s tick, 1 % steps -> 15 s
+        self.assertAlmostEqual(
+            demo.min_ramp_seconds(40.0, curve.peak_slope(0, 0)), 15.0, places=1
+        )
+        # sharper ends are steeper, so they need longer
+        self.assertGreater(
+            demo.min_ramp_seconds(40.0, curve.peak_slope(3, 3)),
+            demo.min_ramp_seconds(40.0, curve.peak_slope(0, 0)),
+        )
+
+    def test_auto_cycle_never_steps_more_than_about_one_percent(self):
+        ramp = demo.min_ramp_seconds(40.0, curve.peak_slope(0, 0))
+        d = self.make_cycle(ramp)
+        prev = None
+        worst = 0.0
+        t = 0.0
+        while t < d.duration_s:
+            e = d.elevation(t)
+            pct = curve.target_pct(e, 10.0, -6.0, 50.0, 10.0)
+            if prev is not None:
+                worst = max(worst, abs(pct - prev))
+            prev = pct
+            t += d.tick_interval()
+        self.assertLess(worst, 1.25)
+
+    def test_cycle_plays_dusk_then_dawn(self):
+        ramp = 15.0
+        d = self.make_cycle(ramp)
+        targets = []
+        t = 0.0
+        while t < d.duration_s:
+            e = d.elevation(t)
+            targets.append(curve.target_pct(e, 10.0, -6.0, 50.0, 10.0))
+            t += 0.25
+        self.assertAlmostEqual(targets[0], 50.0, places=1)  # noon: high
+        self.assertAlmostEqual(min(targets), 10.0, places=1)  # night: low
+        self.assertAlmostEqual(targets[-1], 50.0, places=1)  # next noon: high
+        low_at = targets.index(min(targets))
+        self.assertTrue(0 < low_at < len(targets) - 1)
