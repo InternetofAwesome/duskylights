@@ -285,15 +285,32 @@ def test_saved_values_that_break_the_rules_are_flagged_and_fixed_with_one_click(
     ]  # nothing written until Save
 
 
-def test_legend_names_select_a_light_and_the_caption_is_plain_language():
+def test_one_colour_and_one_bold_line_the_picked_light_over_a_dotted_default():
     r = out(dom(f"{HARNESS}?legendclick=1"))
     assert r["errors"] == []
-    assert r["before"] == "Settings"
-    assert r["afterClick"] == "Settings: Kitchen lights"
     assert (
-        r["bold"] and r["row"]
-    )  # the legend entry and the table row both show the pick
+        r["perLightLegend"] == 0 and r["dots"] == 0
+    )  # no per-light legend entries or colour keys
+    assert r["strokesAll"] == ["#f2a33a"] and r["strokesPicked"] == [
+        "#f2a33a"
+    ]  # a single colour
+    assert (
+        r["before"] == "Settings"
+        and r["afterClick"] == "Settings: Kitchen lights"
+        and r["row"]
+    )
+    assert "every light (default)" in r["legendAll"]
+    assert (
+        "Kitchen lights" in r["legendPicked"]
+        and "Day 70%, Night 20%" in r["legendPicked"]
+        and "default" in r["legendPicked"]
+    )
+    assert (
+        r["widthsPicked"].count("4") == 1 and "2.5" in r["widthsPicked"]
+    )  # one bold line plus the dotted default
+    assert (
+        "4" in r["widths"] and "2.5" not in r["widths"]
+    )  # nothing picked: just the bold default
     assert r["demoLight"] == "light.kitchen"
-    assert r["afterSecond"] == "Settings"  # clicking again goes back to all lights
-    assert r["byKey"] == "Settings: Living lights"  # keyboard works too
+    assert r["afterSecond"] == "Settings"  # click again: back to the default
     assert "elevation" not in r["caption"] and "sun height" in r["caption"]

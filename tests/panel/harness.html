@@ -229,13 +229,18 @@ if (q.get("mode") === "parity") {
   }
   if (q.get("legendclick")) {
     await new Promise((r) => setTimeout(r, 200));
-    const sr = el.shadowRoot, pick = (n) => [...sr.querySelectorAll("#legend [data-light]")][n];
+    const sr = el.shadowRoot, names = () => [...sr.querySelectorAll("#lights tbody tr td:first-child")];
     const title = () => sr.getElementById("setTitle").textContent;
-    const res = { before: title(), caption: [...sr.querySelectorAll("svg text")].map((t) => t.textContent).find((t) => t.includes("clock times")) };
-    pick(1).click(); res.afterClick = title(); res.bold = pick(1).classList.contains("on"); res.row = sr.querySelectorAll("#lights tbody tr")[1].classList.contains("sel");
+    const strokes = () => [...new Set([...sr.querySelectorAll("#graph path[fill=none]")].map((p) => p.getAttribute("stroke")).filter((c) => c && !c.includes("var(")))];
+    const res = { before: title(), strokesAll: strokes(), legendAll: sr.getElementById("legend").textContent,
+      caption: [...sr.querySelectorAll("svg text")].map((t) => t.textContent).find((t) => t.includes("clock times")),
+      perLightLegend: sr.querySelectorAll("#legend [data-light]").length, dots: sr.querySelectorAll("#lights .dot").length,
+      widths: [...sr.querySelectorAll("#graph path[fill=none]")].map((p) => p.getAttribute("stroke-width")) };
+    names()[1].click(); res.afterClick = title(); res.row = sr.querySelectorAll("#lights tbody tr")[1].classList.contains("sel");
+    res.legendPicked = sr.getElementById("legend").textContent; res.strokesPicked = strokes();
+    res.widthsPicked = [...sr.querySelectorAll("#graph path[fill=none]")].map((p) => p.getAttribute("stroke-width"));
     res.demoLight = el._d.light;
-    sr.querySelector("#legend [data-light].on").click(); res.afterSecond = title();   // click again: all lights
-    pick(0).dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); res.byKey = title();
+    names()[1].click(); res.afterSecond = title();
     const out = document.createElement("pre"); out.id = "out";
     out.textContent = JSON.stringify({ errors: window.__errs, ...res });
     document.body.appendChild(out);

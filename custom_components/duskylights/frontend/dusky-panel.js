@@ -61,7 +61,6 @@ export function targetPct(elevation, p) {
 const esc = (s) =>
   String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const fmt = (v, d = 1) => (Number.isFinite(v) ? (Math.round(v * 10 ** d) / 10 ** d).toString() : "-");
-const SERIES = ["#2f80ed", "#27ae60", "#9b51e0", "#e0568a", "#16a2a2", "#c8791c"];
 const AMBER = "#f2a33a";
 
 const SETTINGS = [
@@ -151,9 +150,9 @@ td input[type=number] { width:104px; }
 .badge.demo { background:var(--primary-color,#03a9f4); color:var(--text-primary-color,#fff); }
 .demo-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; align-items:end; }
 .demo-grid label { display:block; font-size:12px; color:var(--secondary-text-color,#727272); margin-bottom:4px; }
-.legend .pick { cursor:pointer; }
-.legend .pick.on { font-weight:600; }
-.legend .pick:hover { text-decoration:underline; }
+.swatch { display:inline-block; width:24px; height:0; border-top:4px solid; border-radius:2px; margin-right:6px; vertical-align:middle; border-color:#f2a33a; }
+.swatch.dots { border-top:3px dotted #f2a33a; }
+tr.sel td:first-child { font-weight:600; }
 .legend { display:flex; flex-wrap:wrap; gap:14px; margin-top:8px; font-size:13px; }
 .err { color:var(--error-color,#db4437); padding:16px; }
 @media (max-width: 640px) {
@@ -482,15 +481,6 @@ class DuskyPanel extends HTMLElement {
       this._rows[key] = { gid, range, num, row, lnk, tip, zero: key === "normal_pct" || key === "floor_pct" };
     }
     this._zeroIds = new Set(info.lights.flatMap((l) => [l.high, l.low]));
-    const legend = root.getElementById("legend");
-    legend.addEventListener("click", (e) => {
-      const el = e.target.closest ? e.target.closest("[data-light]") : null;
-      if (el) this._pickLight(el.dataset.light);
-    });
-    legend.addEventListener("keydown", (e) => {
-      const el = e.target.closest ? e.target.closest("[data-light]") : null;
-      if (el && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); this._pickLight(el.dataset.light); }
-    });
     root.getElementById("setAll").addEventListener("click", () => {
       this._sel = null;
       this._markSel();
@@ -506,7 +496,7 @@ class DuskyPanel extends HTMLElement {
       <th data-tip="Auto follows the sun. Manual means you dimmed it by hand.">Mode</th><th></th></tr></thead><tbody></tbody>`;
     this._lightRows = info.lights.map((l, i) => {
       const tr = document.createElement("tr");
-      tr.innerHTML = `<td><span class="dot" style="background:${SERIES[i % SERIES.length]}"></span><span class="name"></span></td>
+      tr.innerHTML = `<td><span class="name"></span></td>
         <td data-l="Now" class="now"></td><td data-l="Should be" class="target"></td>
         <td data-l="Day"><input type="number" class="hi" min="0" max="100" step="1"></td>
         <td data-l="Night"><input type="number" class="lo" min="0" max="100" step="1"></td>
@@ -930,16 +920,14 @@ class DuskyPanel extends HTMLElement {
     }
     o.push(`<text class="axis" x="${(L + W - R) / 2}" y="${H - 6}" text-anchor="middle">sun height above the horizon, with this evening\u2019s clock times</text>`);
 
-    // per-light curves: the picked light alone and bold, else every light that differs
-    info.lights.forEach((l, i) => {
-      const lp = this._lp(l);
-      const mine = sel && l === sel;
-      const differs = ["start", "end", "high", "low", "sharpStart", "sharpEnd"].some((k) => Math.abs(lp[k] - g[k]) > 1e-6);
-      if (mine || (!sel && differs)) {
-        o.push(`<path d="${path(lp)}" fill="none" stroke="${SERIES[i % SERIES.length]}" stroke-width="${mine ? 4 : 2}" ${mine ? 'stroke-linecap="round"' : 'stroke-dasharray="6 4"'} opacity=".95"/>`);
-      }
-    });
-    o.push(`<path d="${path(g)}" fill="none" stroke="${AMBER}" stroke-width="${sel ? 2 : 4}" stroke-linecap="round" ${sel ? 'stroke-dasharray="5 4" opacity=".7"' : ""}/>`);
+    // the picked light is the bold line with the shared default dotted behind it; with none picked,
+    // the default is the bold line
+    if (sel) {
+      o.push(`<path d="${path(g)}" fill="none" stroke="${AMBER}" stroke-width="2.5" stroke-linecap="round" stroke-dasharray="1 6" opacity=".85"/>`);
+      o.push(`<path d="${path(ep)}" fill="none" stroke="${AMBER}" stroke-width="4" stroke-linecap="round"/>`);
+    } else {
+      o.push(`<path d="${path(g)}" fill="none" stroke="${AMBER}" stroke-width="4" stroke-linecap="round"/>`);
+    }
     o.push(`<circle cx="${X(ep.start)}" cy="${Y(ep.high)}" r="5" fill="${AMBER}"/><circle cx="${X(ep.end)}" cy="${Y(Math.min(ep.low, ep.high))}" r="5" fill="#d9567a"/>`);
 
     // live sun and each light's target
@@ -952,15 +940,12 @@ class DuskyPanel extends HTMLElement {
       const ex = X(clamp(elev, xMin, xMax));
       o.push(`<line x1="${ex}" x2="${ex}" y1="${T}" y2="${H - B}" stroke="var(--primary-text-color,#333)" stroke-width="1" stroke-dasharray="4 3" opacity=".7"/>`);
       o.push(`<text class="axis" x="${ex}" y="${T + 12}" text-anchor="${ex > W - 90 ? "end" : "start"}" dx="${ex > W - 90 ? -4 : 4}">${demoLight ? "demo sun" : "sun"} ${fmt(elev, 1)}°</text>`);
-      info.lights.forEach((l, i) => {
-        if (demoLight && l !== demoLight) return; // only the demo light is moving
-        if (!demoLight && sel && l !== sel) return;
-        const t = this._state(l.target);
-        const v = t ? parseFloat(t.state) : NaN;
-        if (Number.isFinite(v)) {
-          o.push(`<circle cx="${ex}" cy="${Y(v)}" r="6" fill="${SERIES[i % SERIES.length]}" stroke="var(--card-background-color,#fff)" stroke-width="2"><title>${esc(l.name)}: target ${fmt(v, 0)}%</title></circle>`);
-        }
-      });
+      const shown = demoLight || sel; // the light being looked at, else the default curve
+      const t = shown ? this._state(shown.target) : null;
+      const v = shown ? (t ? parseFloat(t.state) : NaN) : targetPct(elev, g);
+      if (Number.isFinite(v)) {
+        o.push(`<circle cx="${ex}" cy="${Y(v)}" r="6" fill="${AMBER}" stroke="var(--card-background-color,#fff)" stroke-width="2"><title>${esc(shown ? shown.name : "Default")}: target ${fmt(v, 0)}%</title></circle>`);
+      }
     }
     const d0 = this._crossing(Gs.start, true), d1 = this._crossing(Gs.end, true);
     const r0 = this._crossing(Gs.end, false), r1 = this._crossing(Gs.start, false);
@@ -974,15 +959,14 @@ class DuskyPanel extends HTMLElement {
     box.innerHTML =
       `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Brightness against sun elevation">${o.join("")}</svg>`;
 
+    const lp = sel ? this._lightParams(sel, G) : null;
     this.shadowRoot.getElementById("legend").innerHTML =
       (sel
-        ? `<span><b>${esc(sel.name)}</b>: Day ${fmt(this._lightParams(sel, G).high, 0)}%, Night ${fmt(this._lightParams(sel, G).low, 0)}% (dashed = global)</span>`
-        : `<span class="sub">Click a light's name to see just its curve.</span>`) +
-      `<span data-tip="The schedule every light follows, unless it has its own settings."><span class="dot" style="background:${AMBER}"></span>global curve</span>` +
-      `<span data-tip="The shading shows how dark the sky is: day, then civil, nautical and astronomical twilight, then night. These are the standard astronomical definitions from the sun's height, not measurements. Hover a band for today's times."><span class="dot" style="background:var(--secondary-text-color,#888);opacity:.5"></span>sky darkness</span>` +
-      info.lights
-        .map((l, i) => `<span class="pick${sel === l ? " on" : ""}" role="button" tabindex="0" data-light="${esc(l.light)}" data-tip="${esc(l.name)}: drawn dashed where it differs from the global curve. Click to show just this light; click again to show all."><span class="dot" style="background:${SERIES[i % SERIES.length]}"></span>${esc(l.name)}</span>`)
-        .join("");
+        ? `<span data-tip="Click the light's name again to go back to the default."><span class="swatch"></span><b>${esc(sel.name)}</b>: Day ${fmt(lp.high, 0)}%, Night ${fmt(lp.low, 0)}%</span>` +
+          `<span data-tip="The shared curve every light follows unless it has its own brightness."><span class="swatch dots"></span>default</span>`
+        : `<span data-tip="The shared curve every light follows unless it has its own brightness."><span class="swatch"></span>every light (default)</span>` +
+          `<span class="sub">Click a light in the table to see its curve.</span>`) +
+      `<span data-tip="The shading shows how dark the sky is: day, then civil, nautical and astronomical twilight, then night. These are the standard astronomical definitions from the sun's height, not measurements. Hover a band for today's times."><span class="dot" style="background:var(--secondary-text-color,#888);opacity:.5"></span>sky darkness</span>`;
   }
 }
 
