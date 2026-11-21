@@ -1,13 +1,46 @@
-# Dusky Lights
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="custom_components/duskylights/brand/dark_icon@2x.png">
+    <img src="custom_components/duskylights/brand/icon@2x.png" alt="Dusky Lights" width="160">
+  </picture>
+</p>
 
-A Home Assistant integration that keeps your lights at a normal level during the
-day and eases them down as the sun sets, following solar *elevation* (not clock
-time), then back up at dawn.
+<h1 align="center">Dusky Lights</h1>
 
-**Status: early development.** The full integration is written and passes its
-tests in Home Assistant's own test harness (config flow, entities, curve, holds,
-release, overrides, demo), but it has **not yet been run against real lights**.
-Treat it as pre-release.
+<p align="center">
+  Lights that follow the sun down, for Home Assistant.<br>
+  Normal brightness all day, a smooth ease to a comfortable low as it gets dark,
+  and back up at dawn. No firmware, no helpers, no other add-ons.
+</p>
+
+<p align="center">
+  <a href="https://github.com/InternetofAwesome/duskylights/actions/workflows/validate.yml"><img src="https://github.com/InternetofAwesome/duskylights/actions/workflows/validate.yml/badge.svg" alt="Validate"></a>
+  <a href="https://hacs.xyz"><img src="https://img.shields.io/badge/HACS-Custom-orange.svg" alt="HACS Custom"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue.svg" alt="AGPL-3.0"></a>
+</p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/curve-dark.svg">
+    <img src="assets/curve-light.svg" alt="Brightness eases from high to low as the sun drops from +10 to -6 degrees" width="720">
+  </picture>
+</p>
+
+## What it does
+
+| | |
+|---|---|
+| **Follows the sun, not the clock** | The ramp is defined by sun *elevation*, so it shifts with the seasons by itself. Default: starts at +10°, floor reached at -6°. |
+| **Never brightens on you** | Dim a light by hand and it stays where you put it until the sun catches down, or you turn it off and on. |
+| **Set it once, tune per room** | Global high and low, with per-room overrides. Overrides of 0 mean "use the global value". |
+| **Shape the curve** | A sharpness control at each end, from soft to abrupt. |
+| **Smooth** | Sun elevation is interpolated between updates; changes are applied in about 1 % steps. |
+| **Try it fast** | Demo mode plays a whole day's sun, for today's date, over a few minutes on a single light. |
+| **Plain Home Assistant** | Only `light` entities and the built-in `sun` integration. Nothing to flash. |
+
+**Status: early development.** It passes its tests in Home Assistant's own test
+harness (config flow, entities, curve, holds, release, overrides, demo) but has
+not yet been run against real lights. Treat it as pre-release.
 
 ## Install (HACS)
 
