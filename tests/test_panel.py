@@ -79,7 +79,7 @@ async def test_registration_skips_arguments_this_home_assistant_lacks(
         old_signature.seen = (frontend_url_path, require_admin)
 
     with patch.object(panel.panel_custom, "async_register_panel", old_signature):
-        await panel.async_register_panel(hass, "1")  # must not pass config_panel_domain
+        await panel.async_register_panel(hass, "1") 
     assert old_signature.seen == ("dusky", True)
 
 

@@ -194,8 +194,6 @@ async def async_register_panel(hass: HomeAssistant, version: str) -> None:
         "sidebar_icon": "mdi:weather-sunset-down",
         "module_url": f"{STATIC_URL}/{JS}?v={version}",
         "require_admin": True,
-        # Makes this the integration's configure page, where HA supports it.
-        "config_panel_domain": DOMAIN,
     }
     params = inspect.signature(panel_custom.async_register_panel).parameters
     if not any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values()):

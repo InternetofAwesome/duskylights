@@ -279,7 +279,8 @@ class DuskyPanel extends HTMLElement {
           <section class="card"><h2>Settings</h2><div id="settings"></div></section>
         </div>
         <section class="card"><h2>Lights</h2><div style="overflow-x:auto"><table id="lights"></table></div>
-          <p style="margin:12px 0 0"><button id="releaseAll">Release all to the curve</button></p></section>
+          <p style="margin:12px 0 0"><button id="releaseAll">Release all to the curve</button>
+          <a class="sub" style="margin-left:16px" href="/config/integrations/integration/duskylights">Add or remove lights</a></p></section>
         <section class="card"><h2>Demo</h2><div class="demo-grid" id="demo"></div><p class="sub" id="demoNote"></p></section>
       </main>`;
 
