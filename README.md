@@ -8,9 +8,8 @@
 <h1 align="center">Dusky Lights</h1>
 
 <p align="center">
-  Lights that follow the sun down, for Home Assistant.<br>
-  Normal brightness all day, a smooth ease to a comfortable low as it gets dark,
-  and back up at dawn. No firmware, no helpers, no other add-ons.
+  Dims your lights along the sun's elevation: a set level during the day, a
+  smooth ease down to a lower level at dusk, and back up at dawn.
 </p>
 
 <p align="center">
@@ -26,17 +25,18 @@
   </picture>
 </p>
 
-## What it does
+## How it behaves
 
-| | |
-|---|---|
-| **Follows the sun, not the clock** | The ramp is defined by sun *elevation*, so it shifts with the seasons by itself. Default: starts at +10°, floor reached at -6°. |
-| **Never brightens on you** | Dim a light by hand and it stays where you put it until the sun catches down, or you turn it off and on. |
-| **Set it once, tune per room** | Global high and low, with per-room overrides. Overrides of 0 mean "use the global value". |
-| **Shape the curve** | A sharpness control at each end, from soft to abrupt. |
-| **Smooth** | Sun elevation is interpolated between updates; changes are applied in about 1 % steps. |
-| **Try it fast** | Demo mode plays a whole day's sun, for today's date, over a few minutes on a single light. |
-| **Plain Home Assistant** | Only `light` entities and the built-in `sun` integration. Nothing to flash. |
+- The ramp is defined by sun elevation, not clock time. Default: it starts at
+  +10° and reaches the low level at -6°.
+- A light you dim by hand stays where you put it until the sun's target drops
+  below it, or until you turn the light off and on.
+- High and low levels are global, with per-room overrides (0 = use the global
+  value). Sharpness can be set at each end of the curve.
+- Sun elevation is interpolated between updates and changes are applied in
+  about 1 % steps.
+- Demo mode plays a day's sun for today's date over a few minutes on one light.
+- It uses `light` entities and the built-in `sun` integration only.
 
 **Status: early development.** It passes its tests in Home Assistant's own test
 harness (config flow, entities, curve, holds, release, overrides, demo) but has
