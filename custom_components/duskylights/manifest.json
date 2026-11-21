@@ -1,0 +1,12 @@
+{
+  "domain": "duskylights",
+  "name": "Dusky Lights",
+  "codeowners": ["@InternetofAwesome"],
+  "config_flow": true,
+  "dependencies": ["sun"],
+  "documentation": "https://github.com/InternetofAwesome/duskylights",
+  "iot_class": "calculated",
+  "issue_tracker": "https://github.com/InternetofAwesome/duskylights/issues",
+  "requirements": [],
+  "version": "0.0.1"
+}
