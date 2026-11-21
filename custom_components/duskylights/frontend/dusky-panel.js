@@ -57,6 +57,21 @@ export function targetPct(elevation, p) {
   return low + (p.high - low) * shape(progress(elevation, p.start, p.end), p.sharpStart, p.sharpEnd);
 }
 
+// ---- outdoor daylight, a rough reference curve ---------------------------------
+// Above the horizon: Haurwitz's clear-sky model (the standard one-liner, W/m2, times ~110 lm/W for
+// visible light). Below it: sky light fading exponentially (about 400 lux at sunset, ~3 lux at -6).
+// Only the shape matters here; the graph stretches it to fill the height.
+export function daylightLux(elevation) {
+  const tail = 400 * Math.exp(0.795 * elevation);
+  if (elevation < 0) return tail;
+  const c = Math.sin((elevation * Math.PI) / 180);
+  const sun = 110 * (c > 0 ? 1098 * c * Math.exp(-0.059 / c) : 0);
+  const t = Math.min(1, elevation / 4); // hand over from the sky-light tail to the sun over the first 4 degrees
+  const k = t * t * (3 - 2 * t);
+  return (1 - k) * tail + k * sun;
+}
+const DAY_FLOOR = 0.1; // lux at the bottom of the (logarithmic) reference curve
+
 // ---- helpers -----------------------------------------------------------------
 const esc = (s) =>
   String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
@@ -751,6 +766,20 @@ class DuskyPanel extends HTMLElement {
     }
     o.push(`<text class="axis" x="${(L + W - R) / 2}" y="${H - 6}" text-anchor="middle">sun elevation, with this evening\u2019s clock times</text>`);
 
+    // outdoor daylight: a faint reference, stretched to fill the height, on a log (perceptual) scale
+    {
+      const top = Math.log10(daylightLux(xMax) / DAY_FLOOR);
+      const f = (e) => clamp(Math.log10(Math.max(daylightLux(e), DAY_FLOOR) / DAY_FLOOR) / top, 0, 1);
+      const pts = [];
+      for (let i = 0; i <= 160; i++) {
+        const e = xMax - ((xMax - xMin) * i) / 160;
+        pts.push(`${i ? "L" : "M"}${X(e).toFixed(1)},${Y(f(e) * yMax).toFixed(1)}`);
+      }
+      const line = pts.join("");
+      o.push(`<path class="daylight" d="${line}L${X(xMin).toFixed(1)},${Y(0)}L${X(xMax).toFixed(1)},${Y(0)}Z" fill="var(--secondary-text-color,#888)" opacity=".10"/>`);
+      o.push(`<path class="daylight" d="${line}" fill="none" stroke="var(--secondary-text-color,#888)" stroke-width="1.5" opacity=".45"/>`);
+    }
+
     // per-light curves: the picked light alone and bold, else every light that differs
     info.lights.forEach((l, i) => {
       const lp = this._lp(l);
@@ -800,6 +829,7 @@ class DuskyPanel extends HTMLElement {
         ? `<span><b>${esc(sel.name)}</b>: Day ${fmt(this._lightParams(sel, G).high, 0)}%, Night ${fmt(this._lightParams(sel, G).low, 0)}% (dashed = global)</span>`
         : `<span class="sub">Click a light's name below to see just its curve.</span>`) +
       `<span><span class="dot" style="background:${AMBER}"></span>global curve</span>` +
+      `<span data-tip="A rough estimate of outdoor daylight on a clear day, stretched to fill the graph. It shows the shape of the day, not real amounts."><span class="dot" style="background:var(--secondary-text-color,#888);opacity:.5"></span>daylight (rough)</span>` +
       info.lights
         .map((l, i) => `<span><span class="dot" style="background:${SERIES[i % SERIES.length]}"></span>${esc(l.name)}</span>`)
         .join("");

@@ -179,3 +179,31 @@ def test_the_graph_glides_to_new_values_instead_of_jumping():
     assert (
         r["settled"] == r["end"] and r["raf"] is False
     )  # it lands and stops redrawing
+
+
+def test_daylight_reference_matches_haurwitz_above_and_decays_below_the_horizon():
+    elevs = [-12, -6, -0.5, 0, 0.5, 5, 10, 25, 32]
+    q = urllib.parse.urlencode({"mode": "lux", "cases": json.dumps(elevs)})
+    got = out(dom(f"{HARNESS}?{q}"))
+
+    def want(e):  # independent copy of the same model, in Python
+        tail = 400 * math.exp(0.795 * e)
+        if e < 0:
+            return tail
+        c = math.sin(math.radians(e))
+        sun = 110 * (1098 * c * math.exp(-0.059 / c) if c > 0 else 0)
+        k = min(1, e / 4)
+        k = k * k * (3 - 2 * k)
+        return (1 - k) * tail + k * sun
+
+    for g, e in zip(got, elevs, strict=True):
+        assert g == pytest.approx(want(e), rel=1e-9)
+    dense = list(range(-150, 400))
+    q = urllib.parse.urlencode(
+        {"mode": "lux", "cases": json.dumps([d / 10 for d in dense])}
+    )
+    curve_ = out(dom(f"{HARNESS}?{q}"))
+    assert curve_ == sorted(
+        curve_
+    )  # brighter as the sun climbs: no dip, no step down, in 0.1 degree steps
+    assert got[1] == pytest.approx(3.4, rel=0.1)  # about 3 lux when civil twilight ends
