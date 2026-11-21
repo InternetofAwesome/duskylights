@@ -69,7 +69,9 @@ Stop it early with `duskylights.demo_stop`.
 
 ## License
 
-[PolyForm Noncommercial 1.0.0](LICENSE). Free to use, modify and share for any
-non-commercial purpose; commercial use needs a separate license from the author.
-Keep the license and the `Required Notice` line in [NOTICE](NOTICE) with any copy.
-This is a source-available license, not an OSI open-source one.
+Copyright (c) 2026 InternetofAwesome.
+[GNU AGPL-3.0](LICENSE). Free to use, modify and share, including commercially,
+provided the copyright notice is kept and any distributed or network-served
+modified version is published under the same license with its source. If you want
+to use it in a closed-source product, a separate commercial license is available
+from the author: open an issue on this repository.
