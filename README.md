@@ -70,8 +70,6 @@ Stop it early with `duskylights.demo_stop`.
 ## License
 
 Copyright (c) 2026 InternetofAwesome.
-[GNU AGPL-3.0](LICENSE). Free to use, modify and share, including commercially,
-provided the copyright notice is kept and any distributed or network-served
-modified version is published under the same license with its source. If you want
-to use it in a closed-source product, a separate commercial license is available
-from the author: open an issue on this repository.
+[GNU AGPL-3.0](LICENSE). Free to use, modify and share, provided the copyright
+notice is kept and any distributed or network-served modified version is
+published under the same license with its source.
