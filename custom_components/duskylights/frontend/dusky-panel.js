@@ -899,8 +899,6 @@ class DuskyPanel extends HTMLElement {
       o.push(`<g class="band" data-tip="${esc(name + range + ". " + blurb + when)}"><rect x="${x1.toFixed(1)}" y="${T}" width="${(x2 - x1).toFixed(1)}" height="${H - B - T}" fill="var(--primary-text-color,#333)" fill-opacity="${shade}"/>` +
         (x2 - x1 >= 40 ? `<text class="axis band-label" x="${((x1 + x2) / 2).toFixed(1)}" y="${T + 14}" text-anchor="middle">${short}</text>` : "") + "</g>");
     }
-    // ramp window shading
-    o.push(`<rect x="${X(ep.start).toFixed(1)}" y="${T}" width="${Math.max(0, X(ep.end) - X(ep.start)).toFixed(1)}" height="${H - T - B}" fill="${AMBER}" opacity=".12"/>`);
     for (let p = 0; p <= G.yMax; p += G.yMax > 60 ? 20 : 10) {
       if (Y(p) < T - 1) continue;
       o.push(`<line class="grid" x1="${L}" x2="${W - R}" y1="${Y(p)}" y2="${Y(p)}"/><text class="axis" x="${L - 8}" y="${Y(p) + 4}" text-anchor="end">${p}%</text>`);
