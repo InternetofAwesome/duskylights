@@ -151,10 +151,7 @@ td input[type=number] { width:104px; }
 .badge.demo { background:var(--primary-color,#03a9f4); color:var(--text-primary-color,#fff); }
 .demo-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; align-items:end; }
 .demo-grid label { display:block; font-size:12px; color:var(--secondary-text-color,#727272); margin-bottom:4px; }
-.swatch { display:inline-block; width:24px; height:0; border-top:4px solid; border-radius:2px; margin-right:6px; vertical-align:middle; border-color:#f2a33a; }
-.swatch.dots { border-top:3px dotted #f2a33a; }
 tr.sel td:first-child { font-weight:600; }
-.legend { display:flex; flex-wrap:wrap; gap:14px; margin-top:8px; font-size:13px; }
 .err { color:var(--error-color,#db4437); padding:16px; }
 @media (max-width: 640px) {
   table, tbody, tr, td { display:block; }
@@ -431,7 +428,7 @@ class DuskyPanel extends HTMLElement {
           <button id="discard" data-tip="Throw away unsaved changes">Discard</button><button id="save" class="fill" data-tip="Apply your changes to the lights">Save</button></div></header>
       <main>
         <div class="two">
-          <section class="card"><h2>Brightness follows the sun</h2><div id="graph"></div><div class="legend" id="legend"></div><p class="sub" id="times"></p></section>
+          <section class="card"><h2>Brightness follows the sun</h2><div id="graph"></div><p class="sub" id="times"></p></section>
           <section class="card"><div class="sethead"><h2 id="setTitle">Settings</h2><button id="setAll" hidden data-tip="Go back to editing the settings every light shares">All lights</button></div><p class="sub" id="setNote"></p><div id="problems"></div><div id="settings"></div></section>
         </div>
         <section class="card"><h2>Lights</h2><div style="overflow-x:auto"><table id="lights"></table></div>
@@ -900,7 +897,7 @@ class DuskyPanel extends HTMLElement {
       const range = top === Infinity ? "" : bottom === -Infinity ? " (sun more than 18\u00b0 below the horizon)" : ` (sun ${Math.abs(top)}\u00b0 to ${Math.abs(bottom)}\u00b0 below the horizon)`;
       const x1 = X(hi), x2 = X(lo);
       o.push(`<g class="band" data-tip="${esc(name + range + ". " + blurb + when)}"><rect x="${x1.toFixed(1)}" y="${T}" width="${(x2 - x1).toFixed(1)}" height="${H - B - T}" fill="var(--primary-text-color,#333)" fill-opacity="${shade}"/>` +
-        (x2 - x1 >= 40 ? `<text class="axis band-label" x="${((x1 + x2) / 2).toFixed(1)}" y="${H - B + 14}" text-anchor="middle">${short}</text>` : "") + "</g>");
+        (x2 - x1 >= 40 ? `<text class="axis band-label" x="${((x1 + x2) / 2).toFixed(1)}" y="${((T + H - B) / 2 + 4).toFixed(1)}" text-anchor="middle">${short}</text>` : "") + "</g>");
     }
     // ramp window shading
     o.push(`<rect x="${X(ep.start).toFixed(1)}" y="${T}" width="${Math.max(0, X(ep.end) - X(ep.start)).toFixed(1)}" height="${H - T - B}" fill="${AMBER}" opacity=".12"/>`);
@@ -960,15 +957,6 @@ class DuskyPanel extends HTMLElement {
         ? `Today's sun: dimming runs ${dusk}; brightening runs ${dawn}.`
         : "Today's sun doesn't pass through both of these elevations at your location, so the ramp doesn't complete today.");
     this._html(box, `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Brightness against sun elevation">${o.join("")}</svg>`);
-
-    const lp = sel ? this._lightParams(sel, G) : null;
-    this._html(this.shadowRoot.getElementById("legend"),
-      (sel
-        ? `<span data-tip="Click the light's name again to go back to the default."><span class="swatch"></span><b>${esc(sel.name)}</b>: Day ${fmt(lp.high, 0)}%, Night ${fmt(lp.low, 0)}%</span>` +
-          `<span data-tip="The shared curve every light follows unless it has its own brightness."><span class="swatch dots"></span>default</span>`
-        : `<span data-tip="The shared curve every light follows unless it has its own brightness."><span class="swatch"></span>every light (default)</span>` +
-          `<span class="sub">Click a light in the table to see its curve.</span>`) +
-      `<span data-tip="The shading shows how dark the sky is: day, then civil, nautical and astronomical twilight, then night. These are the standard astronomical definitions from the sun's height, not measurements. Hover a band for today's times."><span class="dot" style="background:var(--secondary-text-color,#888);opacity:.5"></span>sky darkness</span>`);
   }
 
   // The panel refreshes on every Home Assistant state change. Rewriting a node with identical content

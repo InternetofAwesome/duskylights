@@ -118,20 +118,20 @@ if (q.get("mode") === "parity") {
     const sr = el.shadowRoot, snap = () => [...sr.querySelectorAll("#graph svg path")].map((p) => p.getAttribute("d"));
     const before = snap();
     sr.querySelectorAll("#lights tbody tr td")[0].click();            // pick the first light
-    const picked = snap(), legend = sr.getElementById("legend").textContent;
+    const picked = snap();
     const hi = sr.querySelector("#lights tbody tr .hi");
     hi.value = "90"; hi.dispatchEvent(new Event("change"));           // edit its High: the chart must move
     pump(1200);                                                         // ...smoothly, so give it time to land
-    const edited = snap(), legend2 = sr.getElementById("legend").textContent;
+    const edited = snap();
     sr.querySelectorAll("#lights tbody tr td")[0].click();            // click again: back to all lights
     const out = document.createElement("pre"); out.id = "out";
-    out.textContent = JSON.stringify({ errors: window.__errs, before, picked, edited, legend, legend2, back: snap(), sel: el._sel });
+    out.textContent = JSON.stringify({ errors: window.__errs, before, picked, edited, back: snap(), sel: el._sel });
     document.body.appendChild(out);
   }
   if (q.get("refresh")) {
     await new Promise((r) => setTimeout(r, 200));
     const sr = el.shadowRoot;
-    const pick = () => [sr.querySelector("#lights tbody tr .state"), sr.querySelector("#lights tbody tr .now"), sr.getElementById("legend"), sr.querySelector("#graph svg")];
+    const pick = () => [sr.querySelector("#lights tbody tr .state"), sr.querySelector("#lights tbody tr .now"), sr.getElementById("times"), sr.querySelector("#graph svg")];
     const before = pick(), kidsBefore = before.map((n) => n.firstChild);
     for (let i = 0; i < 3; i++) el.hass = hass();                  // HA pushes a state update
     const after = pick();
@@ -243,12 +243,12 @@ if (q.get("mode") === "parity") {
     const sr = el.shadowRoot, names = () => [...sr.querySelectorAll("#lights tbody tr td:first-child")];
     const title = () => sr.getElementById("setTitle").textContent;
     const strokes = () => [...new Set([...sr.querySelectorAll("#graph path[fill=none]")].map((p) => p.getAttribute("stroke")).filter((c) => c && !c.includes("var(")))];
-    const res = { before: title(), strokesAll: strokes(), legendAll: sr.getElementById("legend").textContent,
+    const res = { before: title(), strokesAll: strokes(),
       caption: [...sr.querySelectorAll("svg text")].map((t) => t.textContent).find((t) => t.includes("clock times")),
-      perLightLegend: sr.querySelectorAll("#legend [data-light]").length, dots: sr.querySelectorAll("#lights .dot").length,
+      legendGone: !sr.getElementById("legend"), dots: sr.querySelectorAll("#lights .dot").length,
       widths: [...sr.querySelectorAll("#graph path[fill=none]")].map((p) => p.getAttribute("stroke-width")) };
     names()[1].click(); res.afterClick = title(); res.row = sr.querySelectorAll("#lights tbody tr")[1].classList.contains("sel");
-    res.legendPicked = sr.getElementById("legend").textContent; res.strokesPicked = strokes();
+    res.strokesPicked = strokes();
     res.widthsPicked = [...sr.querySelectorAll("#graph path[fill=none]")].map((p) => p.getAttribute("stroke-width"));
     res.demoLight = el._d.light;
     names()[1].click(); res.afterSecond = title();

@@ -154,8 +154,6 @@ def test_picking_a_light_shows_its_own_curve_and_editing_it_moves_the_chart():
     assert r["errors"] == []
     assert r["picked"] != r["before"]  # now showing that light's curve
     assert r["edited"] != r["picked"]  # typing a new High redraws it live
-    assert "Living lights" in r["legend"] and "Day 50%" in r["legend"]
-    assert "Day 90%" in r["legend2"]
     assert r["back"] != r["edited"] and r["sel"] is None  # second click = all lights
 
 
@@ -295,7 +293,7 @@ def test_one_colour_and_one_bold_line_the_picked_light_over_a_dotted_default():
     r = out(dom(f"{HARNESS}?legendclick=1"))
     assert r["errors"] == []
     assert (
-        r["perLightLegend"] == 0 and r["dots"] == 0
+        r["legendGone"] and r["dots"] == 0
     )  # no per-light legend entries or colour keys
     assert r["strokesAll"] == ["#f2a33a"] and r["strokesPicked"] == [
         "#f2a33a"
@@ -304,12 +302,6 @@ def test_one_colour_and_one_bold_line_the_picked_light_over_a_dotted_default():
         r["before"] == "Settings"
         and r["afterClick"] == "Settings: Kitchen lights"
         and r["row"]
-    )
-    assert "every light (default)" in r["legendAll"]
-    assert (
-        "Kitchen lights" in r["legendPicked"]
-        and "Day 70%, Night 20%" in r["legendPicked"]
-        and "default" in r["legendPicked"]
     )
     assert (
         r["widthsPicked"].count("4") == 1 and "2.5" in r["widthsPicked"]
