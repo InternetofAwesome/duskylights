@@ -897,7 +897,7 @@ class DuskyPanel extends HTMLElement {
       const range = top === Infinity ? "" : bottom === -Infinity ? " (sun more than 18\u00b0 below the horizon)" : ` (sun ${Math.abs(top)}\u00b0 to ${Math.abs(bottom)}\u00b0 below the horizon)`;
       const x1 = X(hi), x2 = X(lo);
       o.push(`<g class="band" data-tip="${esc(name + range + ". " + blurb + when)}"><rect x="${x1.toFixed(1)}" y="${T}" width="${(x2 - x1).toFixed(1)}" height="${H - B - T}" fill="var(--primary-text-color,#333)" fill-opacity="${shade}"/>` +
-        (x2 - x1 >= 40 ? `<text class="axis band-label" x="${((x1 + x2) / 2).toFixed(1)}" y="${((T + H - B) / 2 + 4).toFixed(1)}" text-anchor="middle">${short}</text>` : "") + "</g>");
+        (x2 - x1 >= 40 ? `<text class="axis band-label" x="${((x1 + x2) / 2).toFixed(1)}" y="${T + 14}" text-anchor="middle">${short}</text>` : "") + "</g>");
     }
     // ramp window shading
     o.push(`<rect x="${X(ep.start).toFixed(1)}" y="${T}" width="${Math.max(0, X(ep.end) - X(ep.start)).toFixed(1)}" height="${H - T - B}" fill="${AMBER}" opacity=".12"/>`);
@@ -939,7 +939,7 @@ class DuskyPanel extends HTMLElement {
     if (Number.isFinite(elev)) {
       const ex = X(clamp(elev, xMin, xMax));
       o.push(`<line x1="${ex}" x2="${ex}" y1="${T}" y2="${H - B}" stroke="var(--primary-text-color,#333)" stroke-width="1" stroke-dasharray="4 3" opacity=".7"/>`);
-      o.push(`<text class="axis" x="${ex}" y="${T + 12}" text-anchor="${ex > W - 90 ? "end" : "start"}" dx="${ex > W - 90 ? -4 : 4}">${demoLight ? "demo sun" : "sun"} ${fmt(elev, 1)}°</text>`);
+      o.push(`<text class="axis" x="${ex}" y="${T + 30}" text-anchor="${ex > W - 90 ? "end" : "start"}" dx="${ex > W - 90 ? -4 : 4}">${demoLight ? "demo sun" : "sun"} ${fmt(elev, 1)}°</text>`);
       const shown = demoLight || sel; // the light being looked at, else the default curve
       const t = shown ? this._state(shown.target) : null;
       const v = shown ? (t ? parseFloat(t.state) : NaN) : targetPct(elev, g);
