@@ -168,6 +168,12 @@ def test_tooltips_are_our_own_delayed_and_explain_the_default():
     assert r["native"] == 0  # no browser-styled title tooltips left
 
 
+def test_a_state_update_does_not_rebuild_what_you_are_selecting_or_hovering():
+    r = out(dom(f"{HARNESS}?refresh=1"))
+    assert r["errors"] == []
+    assert all(r["kids"])  # same text/child nodes, so selections and tooltips survive
+
+
 def test_the_graph_glides_to_new_values_instead_of_jumping():
     r = out(dom(f"{HARNESS}?anim=1"))
     assert r["errors"] == []

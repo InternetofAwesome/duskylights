@@ -675,15 +675,15 @@ class DuskyPanel extends HTMLElement {
       const none = !(this._info.candidates || []).length;
       inp.disabled = dirty > 0 || none;
       btn.disabled = inp.disabled || !this._addPick;
-      root.getElementById("addNote").textContent = dirty > 0 ? "Save or discard your changes first." : none ? "No other lights to add." : "";
+      this._txt(root.getElementById("addNote"), dirty > 0 ? "Save or discard your changes first." : none ? "No other lights to add." : "");
       for (const r of this._lightRows) r.tr.querySelector(".rm").disabled = dirty > 0 || !many;
     }
     const root = this.shadowRoot;
-    root.getElementById("dirty").textContent = this._saveError
+    this._txt(root.getElementById("dirty"), this._saveError
       ? "Save failed: " + this._saveError
       : dirty
         ? `${dirty} unsaved change${dirty > 1 ? "s" : ""}`
-        : "";
+        : "");
     root.getElementById("save").disabled = !dirty || this._saving;
     root.getElementById("discard").disabled = !dirty || this._saving;
 
@@ -727,11 +727,11 @@ class DuskyPanel extends HTMLElement {
         box.appendChild(d);
       }
     }
-    root.getElementById("setTitle").textContent = sel ? `Settings: ${sel.name}` : "Settings";
+    this._txt(root.getElementById("setTitle"), sel ? `Settings: ${sel.name}` : "Settings");
     root.getElementById("setAll").hidden = !sel;
-    root.getElementById("setNote").textContent = this._pushNote ? this._pushNote : sel
+    this._txt(root.getElementById("setNote"), this._pushNote ? this._pushNote : sel
       ? `Only day and night brightness can differ per light. Greyed-out settings are shared by every light.`
-      : "These apply to every light unless it has its own. Click a light's name below to set just that one.";
+      : "These apply to every light unless it has its own. Click a light's name below to set just that one.");
 
     const g = this._params();
     for (const r of this._lightRows) {
@@ -739,15 +739,15 @@ class DuskyPanel extends HTMLElement {
       const t = this._state(l.target);
       const ls = this._state(l.light);
       const bri = ls && ls.attributes ? ls.attributes.brightness : null;
-      r.tr.querySelector(".now").textContent = ls && ls.state === "on" && bri != null ? fmt((bri * 100) / 255, 0) + "%" : ls ? ls.state : "-";
-      r.tr.querySelector(".target").textContent = t ? fmt(parseFloat(t.state), 0) + "%" : "-";
+      this._txt(r.tr.querySelector(".now"), ls && ls.state === "on" && bri != null ? fmt((bri * 100) / 255, 0) + "%" : ls ? ls.state : "-");
+      this._txt(r.tr.querySelector(".target"), t ? fmt(parseFloat(t.state), 0) + "%" : "-");
       const holding = t && t.attributes && t.attributes.holding;
       const demo = t && t.attributes && t.attributes.demo;
-      r.tr.querySelector(".state").innerHTML = demo
+      this._html(r.tr.querySelector(".state"), demo
         ? '<span class="badge demo">demo</span>'
         : holding
           ? `<span class="badge hold" data-tip="You dimmed it by hand. It stays there until the sun's curve catches down to it.">manual ${fmt(((t.attributes.hold_brightness || 0) * 100) / 255, 0)}%</span>`
-          : '<span class="badge" data-tip="Following the sun">auto</span>';
+          : '<span class="badge" data-tip="Following the sun">auto</span>');
       const set = (inp, id, glob) => {
         if (this.shadowRoot.activeElement === inp) return;
         const v = this._num(id, 0);
@@ -768,16 +768,16 @@ class DuskyPanel extends HTMLElement {
     for (const k of ["light", "repeat", "len"]) this._demo[k].disabled = running;
     const lname = ((this._info.lights.find((l) => l.light === this._d.light) || {}).name) || "the light";
     this._demo.go.setAttribute("data-tip", "Plays a quick dusk and dawn on this one light, then puts it back as it was.");
-    this._demo.go.textContent = running ? "Stop demo" : dirty ? "Try changes" : "Start demo";
+    this._txt(this._demo.go, running ? "Stop demo" : dirty ? "Try changes" : "Start demo");
     const sw = this._state(this._info.demo.switch);
     this._demo.go.disabled = !this._info.lights.length || !sw || sw.state === "unavailable";
-    root.getElementById("demoNote").textContent = !this._info.lights.length
+    this._txt(root.getElementById("demoNote"), !this._info.lights.length
       ? "Add a light above to run a demo."
       : this._demoError
       ? "Could not start: " + this._demoError
       : dirty
         ? `Runs ${lname} with the unsaved values shown here. Nothing is saved until you press Save.`
-        : `Plays a compressed dusk and dawn on ${lname}, starting from where it is now, then puts it back as it was.`;
+        : `Plays a compressed dusk and dawn on ${lname}, starting from where it is now, then puts it back as it was.`);
 
     this._drawGraph();
   }
@@ -951,22 +951,31 @@ class DuskyPanel extends HTMLElement {
     const r0 = this._crossing(Gs.end, false), r1 = this._crossing(Gs.start, false);
     const span = (a, b) => (a != null && b != null ? `${this._clock(a)} to ${this._clock(b)}` : null);
     const dusk = span(d0, d1), dawn = span(r0, r1);
-    this.shadowRoot.getElementById("times").textContent = !this._sun
+    this._txt(this.shadowRoot.getElementById("times"), !this._sun
       ? ""
       : dusk && dawn
         ? `Today's sun: dimming runs ${dusk}; brightening runs ${dawn}.`
-        : "Today's sun doesn't pass through both of these elevations at your location, so the ramp doesn't complete today.";
-    box.innerHTML =
-      `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Brightness against sun elevation">${o.join("")}</svg>`;
+        : "Today's sun doesn't pass through both of these elevations at your location, so the ramp doesn't complete today.");
+    this._html(box, `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Brightness against sun elevation">${o.join("")}</svg>`);
 
     const lp = sel ? this._lightParams(sel, G) : null;
-    this.shadowRoot.getElementById("legend").innerHTML =
+    this._html(this.shadowRoot.getElementById("legend"),
       (sel
         ? `<span data-tip="Click the light's name again to go back to the default."><span class="swatch"></span><b>${esc(sel.name)}</b>: Day ${fmt(lp.high, 0)}%, Night ${fmt(lp.low, 0)}%</span>` +
           `<span data-tip="The shared curve every light follows unless it has its own brightness."><span class="swatch dots"></span>default</span>`
         : `<span data-tip="The shared curve every light follows unless it has its own brightness."><span class="swatch"></span>every light (default)</span>` +
           `<span class="sub">Click a light in the table to see its curve.</span>`) +
-      `<span data-tip="The shading shows how dark the sky is: day, then civil, nautical and astronomical twilight, then night. These are the standard astronomical definitions from the sun's height, not measurements. Hover a band for today's times."><span class="dot" style="background:var(--secondary-text-color,#888);opacity:.5"></span>sky darkness</span>`;
+      `<span data-tip="The shading shows how dark the sky is: day, then civil, nautical and astronomical twilight, then night. These are the standard astronomical definitions from the sun's height, not measurements. Hover a band for today's times."><span class="dot" style="background:var(--secondary-text-color,#888);opacity:.5"></span>sky darkness</span>`);
+  }
+
+  // The panel refreshes on every Home Assistant state change. Rewriting a node with identical content
+  // still replaces it, which drops text selections and hover targets (and so hides tooltips), so only
+  // touch the DOM when something actually changed.
+  _html(el, html) {
+    if (el._h !== html) { el._h = html; el.innerHTML = html; }
+  }
+  _txt(el, text) {
+    if (el.textContent !== text) el.textContent = text;
   }
 }
 

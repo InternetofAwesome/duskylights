@@ -128,6 +128,17 @@ if (q.get("mode") === "parity") {
     out.textContent = JSON.stringify({ errors: window.__errs, before, picked, edited, legend, legend2, back: snap(), sel: el._sel });
     document.body.appendChild(out);
   }
+  if (q.get("refresh")) {
+    await new Promise((r) => setTimeout(r, 200));
+    const sr = el.shadowRoot;
+    const pick = () => [sr.querySelector("#lights tbody tr .state"), sr.querySelector("#lights tbody tr .now"), sr.getElementById("legend"), sr.querySelector("#graph svg")];
+    const before = pick(), kidsBefore = before.map((n) => n.firstChild);
+    for (let i = 0; i < 3; i++) el.hass = hass();                  // HA pushes a state update
+    const after = pick();
+    const out = document.createElement("pre"); out.id = "out";
+    out.textContent = JSON.stringify({ errors: window.__errs, kids: after.map((n, i) => n.firstChild === kidsBefore[i]) });
+    document.body.appendChild(out);
+  }
   if (q.get("tip")) {
     await new Promise((r) => setTimeout(r, 200));
     const sr = el.shadowRoot, tip = sr.getElementById("tip");
