@@ -80,6 +80,7 @@ def build_info(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, Any]:
         candidates.append({"light": st.entity_id, "name": st.name})
     candidates.sort(key=lambda c: c["name"].lower())
     return {
+        "build": _installed_commit(hass) or _digest(),
         "settings": settings,
         "lights": lights,
         "candidates": candidates,
@@ -212,6 +213,16 @@ def async_setup_websocket(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, ws_demo)
     websocket_api.async_register_command(hass, ws_demo_stop)
     websocket_api.async_register_command(hass, ws_sun_path)
+
+
+def _installed_commit(hass: HomeAssistant) -> str | None:
+    """The commit HACS installed this from, when HACS can tell us (best effort)."""
+    try:
+        hacs = hass.data.get("hacs")
+        repo = hacs.repositories.get_by_full_name("internetofawesome/duskylights")
+        return str(repo.data.installed_commit or "")[:7] or None
+    except Exception:  # noqa: BLE001 - HACS missing, renamed API, manual install
+        return None
 
 
 def _digest() -> str:

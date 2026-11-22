@@ -95,6 +95,7 @@ main { max-width:1100px; margin:0 auto; padding:16px; display:grid; gap:16px; }
   box-shadow:var(--ha-card-box-shadow,0 1px 3px rgba(0,0,0,.2)); padding:16px; min-width:0; }
 .card h2 { font-size:16px; font-weight:500; margin:0 0 12px; }
 .sub { color:var(--secondary-text-color,#727272); font-size:13px; }
+.build { color:var(--secondary-text-color,#727272); font-size:11px; opacity:.7; text-align:center; margin:4px 0 0; user-select:text; }
 .two { display:grid; grid-template-columns:minmax(0,3fr) minmax(0,2fr); gap:16px; }
 @media (max-width: 860px) { .two { grid-template-columns:minmax(0,1fr); } }
 svg { width:100%; height:auto; display:block; }
@@ -438,8 +439,10 @@ class DuskyPanel extends HTMLElement {
           <div class="addrow"><div class="combo"><label for="addIn">Add a light</label><input id="addIn" type="text" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="addList" placeholder="Search by name or entity id"><ul id="addList" role="listbox"></ul></div><button id="addBtn" data-tip="Have Dusky manage the selected light">Add light</button>
             <span class="sub" id="addNote"></span></div></section>
         <section class="card"><h2>Demo</h2><div class="demo-grid" id="demo"></div><p class="sub" id="demoNote"></p></section>
+        <p class="build" id="build"></p>
       </main><div id="tip" role="tooltip"></div>`;
 
+    root.getElementById("build").textContent = info.build ? `build ${info.build}` : "";
     root.getElementById("save").addEventListener("click", () => this._save());
     root.getElementById("discard").addEventListener("click", () => this._discard());
 
